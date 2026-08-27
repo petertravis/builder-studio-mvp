@@ -1,0 +1,3188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Builder Studio MVP</title>
+  <link rel="stylesheet" href="falcon-tokens.css">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════
+       APP BUILDER
+       Flow: Build entry (rail, bottom-left) -> apps index -> name the app
+             -> builder (Build | Settings) -> publish -> end-user app.
+
+       The builder is STRUCTURAL, not conversational: there is no AI chat
+       panel. The user composes a nav out of objects that already exist in
+       the workspace. Sections are groups; objects are rows.
+
+       Chrome + tokens lifted from builder-mvp.html so the two prototypes
+       are visually the same product. Geometry off Figma frame 5:12893.
+       ═══════════════════════════════════════════════════════════════════ */
+
+    /* Column flex, not `.page { height: 100vh }`. The prototype nav is a
+       sibling of .page, so a full-viewport .page made the document 44px
+       taller than the window — and body's overflow:hidden clipped exactly
+       that much off the bottom of every screen, silently. */
+    body {
+      display: flex; flex-direction: column;
+      height: 100vh; overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       PROTOTYPE NAV — deliberately NOT Asana chrome, so nobody mistakes
+       it for product UI in a review.
+       ══════════════════════════════════════════════════════════════════ */
+    .proto-nav {
+      height: 44px; flex-shrink: 0;
+      display: flex; align-items: center; gap: var(--spacing-16);
+      padding: 0 var(--spacing-16);
+      background: var(--inverse-background-strong);
+      color: var(--inverse-text);
+    }
+    .proto-nav__brand {
+      display: inline-flex; align-items: center; gap: var(--spacing-8);
+      font-size: var(--type-s-size); letter-spacing: 0.04em;
+      text-transform: uppercase; font-weight: 700;
+      color: rgba(242,243,244,0.6); white-space: nowrap;
+    }
+    /* Step trail — shows where you are in the flow */
+    .proto-steps { display: inline-flex; align-items: center; gap: 2px; }
+    .proto-step {
+      height: 26px; padding: 0 10px;
+      display: inline-flex; align-items: center; gap: 6px;
+      border: none; border-radius: 6px; background: none;
+      color: rgba(242,243,244,0.5);
+      font-family: inherit; font-size: var(--type-s-size);
+      letter-spacing: 0; cursor: pointer; white-space: nowrap;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .proto-step:hover:not(:disabled) { background: rgba(255,255,255,0.12); color: #fff; }
+    .proto-step:disabled { cursor: default; opacity: 0.45; }
+    .proto-step--done { color: rgba(242,243,244,0.8); }
+    .proto-step--active { background: var(--background-weak); color: var(--text); font-weight: 500; }
+    .proto-step__n {
+      width: 16px; height: 16px; border-radius: 500px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700;
+      background: rgba(255,255,255,0.18); color: inherit;
+    }
+    .proto-step--active .proto-step__n { background: var(--text); color: #fff; }
+    .proto-nav__sep { color: rgba(242,243,244,0.25); font-size: 11px; }
+    .proto-nav__reset {
+      margin-left: auto;
+      height: 26px; padding: 0 10px;
+      background: none; border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 6px; color: rgba(242,243,244,0.85);
+      font-family: inherit; font-size: var(--type-s-size);
+      letter-spacing: 0; cursor: pointer; white-space: nowrap;
+    }
+    .proto-nav__reset:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+    .page { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+
+    /* ── Asana shell ─────────────────────────────────────────────────── */
+    .app {
+      flex: 1; min-height: 0;
+      display: grid; grid-template-rows: var(--topbar-height) 1fr;
+      background: var(--background-medium);
+      overflow: hidden;
+    }
+    .app__lower {
+      display: grid;
+      grid-template-columns: var(--rail-width) var(--sidebar-width) 1fr;
+      min-height: 0;
+    }
+
+    /* ── Topbar ──────────────────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding: 0 var(--spacing-12);
+      background: var(--background-medium);
+    }
+    .topbar__left  { flex: 1; display: flex; align-items: center; gap: var(--spacing-8); }
+    .topbar__right { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-4); }
+    .create-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 28px; padding: 0 12px 0 8px;
+      background: var(--button-creation-background);
+      color: var(--button-creation-icon);
+      border: none; border-radius: 500px;
+      font-family: inherit; font-size: var(--type-m-size);
+      line-height: var(--type-m-line); letter-spacing: var(--type-m-track);
+      font-weight: 500; cursor: pointer; transition: filter 120ms ease;
+    }
+    .create-btn:hover { filter: brightness(0.95); }
+    .create-btn svg { width: 14px; height: 14px; }
+    .search {
+      width: 540px; flex-shrink: 0;
+      display: flex; align-items: center; gap: var(--spacing-8);
+      height: 28px; padding: 0 12px;
+      background: var(--background-weak);
+      border: 1px solid var(--border-strong);
+      border-radius: 500px; color: var(--text-weak);
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+    }
+    .search svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--icon); }
+
+    /* ── Icon rail ───────────────────────────────────────────────────── */
+    .rail {
+      display: flex; flex-direction: column;
+      justify-content: space-between; align-items: stretch;
+      background: var(--background-medium); overflow: hidden;
+    }
+    .rail__modes { display: flex; flex-direction: column; gap: var(--spacing-4); }
+    .rail__mode {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: var(--spacing-4); padding: 6px var(--spacing-4) 2px;
+      border-radius: 6px; cursor: pointer;
+      background: none; border: none; width: 100%; font-family: inherit;
+    }
+    .rail__mode-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: var(--spacing-8); border-radius: 6px;
+      color: var(--icon); transition: background 120ms ease;
+    }
+    .rail__mode:hover .rail__mode-icon { background: var(--background-hover); }
+    .rail__mode-label {
+      font-family: var(--font-text);
+      font-size: var(--type-rail-size); font-weight: 500;
+      color: var(--text-weak); text-align: center; line-height: normal;
+    }
+    .rail__mode--active .rail__mode-icon { background: var(--background-active); color: var(--icon-active); }
+    .rail__mode--active .rail__mode-label { color: var(--text); }
+
+    .rail__actions {
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      gap: var(--spacing-12); padding: 10px 0 18px;
+    }
+    /* THE BUILD ENTRY — bottom-left corner of the navigation. Divider above
+       separates it from the workspace modes: it is a tool, not a place. */
+    .rail__build {
+      width: 100%; padding-top: var(--spacing-12);
+      border-top: 1px solid var(--border-strong);
+      display: flex; justify-content: center;
+    }
+    .rail__mode--build .rail__mode-icon { color: var(--icon); }
+    .rail__mode--build:hover .rail__mode-icon { background: var(--background-active); color: var(--icon-active); }
+    /* Nudge — a soft pulse so reviewers find the entry point unaided */
+    .rail__mode--nudge .rail__mode-icon {
+      animation: buildPulse 2.4s ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(69,115,210,0.5);
+    }
+    @keyframes buildPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(69,115,210,0.42); }
+      50%      { box-shadow: 0 0 0 6px rgba(69,115,210,0); }
+    }
+
+    .avatar-28 {
+      width: var(--sizing-28); height: var(--sizing-28); border-radius: 500px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--cz-yellow-bg); color: var(--cz-yellow-fg);
+      border: 1px solid var(--avatar-hairline);
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      flex-shrink: 0;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    .sidebar {
+      position: relative;
+      display: flex; flex-direction: column; align-items: stretch;
+      padding: var(--spacing-4) 0;
+      background: var(--background-medium);
+      border: 1px solid var(--border-strong); border-bottom: none;
+      border-top-left-radius: var(--spacing-8);
+      overflow: hidden;
+    }
+    .sb__section {
+      display: flex; align-items: flex-end;
+      height: 30px; padding: 0 var(--spacing-12) var(--spacing-8);
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      font-weight: 500; color: var(--text-weak);
+    }
+    .sb__group { display: flex; flex-direction: column; padding: 0 var(--spacing-4); }
+    .sb__row {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      height: 32px; padding: 1px var(--spacing-8);
+      border-radius: var(--spacing-8); cursor: pointer; color: var(--text);
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track);
+      transition: background 120ms ease;
+    }
+    .sb__row:hover { background: var(--background-hover); }
+    .sb__row--active { background: var(--background-active); }
+    .sb__row-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sb__row-count { font-size: var(--type-s-size); color: var(--text-weak); }
+
+    /* ── Icon boxes — real Asana glyphs are filled paths, often smaller
+       than their nominal box. Wrapper holds the box; svg keeps its leaf. */
+    .ico { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--icon); }
+    .ico--16 { width: 16px; height: 16px; }
+    .ico--14 { width: 14px; height: 14px; }
+    .ico--12 { width: 12px; height: 12px; }
+    .ico > svg { display: block; }
+    /* Square-by-construction, so it takes its box on BOTH axes. Scoped to
+       this one glyph — the real Figma icons carry their own leaf sizes and
+       must not be forced square. */
+    .ico--16 > .ico-folder { width: 16px; height: 16px; }
+    .ico--12 > .ico-folder { width: 12px; height: 12px; }
+    .pf-head__icon > .ico-folder { width: 13px; height: 13px; }
+    /* App-identity icons are square on a 24 grid, so they take their box */
+    .ico--16 > .ico-app { width: 16px; height: 16px; }
+    .ico--12 > .ico-app { width: 12px; height: 12px; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 32px; padding: 0 14px;
+      border-radius: 6px; cursor: pointer; font-family: inherit;
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); font-weight: 500;
+      transition: background 120ms ease, filter 120ms ease;
+      white-space: nowrap;
+    }
+    .btn > svg { width: 14px; height: 14px; }
+    .btn--primary {
+      background: var(--primary-background-strong); color: var(--primary-text-strong);
+      border: 1px solid var(--primary-background-strong);
+    }
+    .btn--primary:hover { filter: brightness(0.94); }
+    .btn--primary:disabled { background: var(--background-strong); border-color: var(--border-strong); color: var(--text-disabled); cursor: default; filter: none; }
+    .btn--secondary {
+      background: var(--button-background-secondary); color: var(--text);
+      border: 1px solid var(--button-border-secondary);
+    }
+    .btn--secondary:hover { background: var(--background-medium); }
+    .btn--subtle {
+      background: none; border: 1px solid transparent; color: var(--text-weak);
+    }
+    .btn--subtle:hover { background: var(--background-hover); color: var(--text); }
+    /* Destructive-but-recoverable: unpublish takes the app away from people,
+       so it reads red, but nothing is deleted. */
+    .btn--danger {
+      background: var(--button-background-secondary);
+      border: 1px solid var(--button-border-secondary); color: #b4382e;
+    }
+    .btn--danger:hover { background: #fdf3f2; border-color: #e8b4ae; }
+    .btn--sm { height: 28px; padding: 0 10px; font-size: var(--type-s-size); letter-spacing: 0; }
+
+    .icon-btn {
+      width: var(--sizing-28); height: var(--sizing-28);
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--button-background-subtle);
+      border: 1px solid var(--button-border-subtle);
+      border-radius: 6px; color: var(--icon); cursor: pointer;
+      transition: background 120ms ease, color 120ms ease; flex-shrink: 0;
+    }
+    .icon-btn:hover { background: var(--background-hover); color: var(--icon-active); }
+    .icon-btn > svg { width: 16px; height: 16px; }
+    .icon-btn--sm { width: 20px; height: 20px; border-radius: 4px; }
+    .icon-btn--sm > svg { width: 12px; height: 12px; }
+
+    /* ── Canvas ──────────────────────────────────────────────────────── */
+    /* Square top-left: the canvas butts directly against the sidebar's right
+       edge, so a radius here curves away from that edge and leaves a notch.
+       The sidebar keeps its radius — that corner is a genuine outer corner
+       against the rail. */
+    .canvas {
+      display: flex; flex-direction: column; min-width: 0; min-height: 0;
+      background: var(--background-weak);
+      border-top: 1px solid var(--border-strong);
+      border-left: 1px solid var(--border-strong);
+      overflow: hidden; position: relative;
+    }
+    .cv__head {
+      display: flex; flex-direction: column; justify-content: center; gap: 2px;
+      padding: var(--spacing-24) var(--spacing-24) var(--spacing-12);
+      flex-shrink: 0;
+    }
+    .cv__title-row { display: flex; align-items: center; gap: var(--spacing-8); }
+    .cv__title {
+      font-family: var(--font-display);
+      font-size: var(--type-h3-size); line-height: var(--type-h3-line);
+      letter-spacing: var(--type-h3-track); font-weight: 500; color: var(--text);
+    }
+    .cv__sub { font-size: var(--type-m-size); color: var(--text-weak); letter-spacing: var(--type-m-track); }
+    .cv__head-actions { margin-left: auto; display: flex; align-items: center; gap: var(--spacing-8); }
+    .cv__body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--spacing-24) var(--spacing-24); }
+
+    /* Object-type squircle avatar, colored per type */
+    .obj-av {
+      width: var(--sizing-24); height: var(--sizing-24); flex-shrink: 0;
+      border-radius: 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .obj-av--sm { width: 20px; height: 20px; border-radius: 5px; }
+    .obj-av--lg { width: var(--sizing-36); height: var(--sizing-36); border-radius: 8px; }
+    .obj-av svg { display: block; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       APPS INDEX
+       ══════════════════════════════════════════════════════════════════ */
+    .apps-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+      gap: var(--spacing-12);
+    }
+    .app-card {
+      display: flex; flex-direction: column; gap: var(--spacing-8);
+      padding: var(--spacing-16);
+      border: 1px solid var(--border); border-radius: var(--spacing-8);
+      background: var(--background-weak); cursor: pointer;
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .app-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-medium); }
+    .app-card__top { display: flex; align-items: center; gap: var(--spacing-8); }
+    .app-card__name { font-weight: 500; color: var(--text); }
+    .app-card__meta { font-size: var(--type-s-size); color: var(--text-weak); }
+    .app-card__foot { display: flex; align-items: center; gap: 6px; margin-top: var(--spacing-4); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 20px; padding: 0 8px; border-radius: 500px;
+      font-size: var(--type-s-size); letter-spacing: 0; white-space: nowrap;
+    }
+    .pill--live  { background: var(--cz-green-bg);  color: var(--cz-green-fg); }
+    .pill--draft { background: var(--cz-none-bg);   color: var(--cz-none-fg); }
+    .pill--new   { background: var(--cz-blue-bg);   color: var(--cz-blue-fg); }
+
+    .app-card--new {
+      align-items: center; justify-content: center; text-align: center;
+      border-style: dashed; border-color: var(--border-strong);
+      background: var(--background-weak); min-height: 128px; gap: var(--spacing-4);
+    }
+    .app-card--new:hover { border-color: var(--primary-background-strong); background: var(--selected-background); }
+    .app-card--new .obj-av { background: var(--selected-background); color: var(--primary-background-strong); }
+    .app-card--new__label { font-weight: 500; color: var(--text); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       MODAL — name the app
+       ══════════════════════════════════════════════════════════════════ */
+    .scrim {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(29,31,33,0.32);
+      display: none; align-items: center; justify-content: center;
+    }
+    .scrim--on { display: flex; }
+    .modal {
+      width: 468px; background: var(--background-weak);
+      border-radius: var(--spacing-12); box-shadow: var(--shadow-large);
+      overflow: hidden;
+    }
+    .modal__head {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding: var(--spacing-16) var(--spacing-24);
+      border-bottom: 1px solid var(--border);
+    }
+    .modal__title {
+      font-family: var(--font-display); font-size: var(--type-xl-size);
+      line-height: var(--type-xl-line); letter-spacing: var(--type-xl-track);
+      font-weight: 500;
+    }
+    .modal__body { padding: var(--spacing-24); display: flex; flex-direction: column; gap: var(--spacing-16); }
+    .modal__foot {
+      display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-8);
+      padding: var(--spacing-12) var(--spacing-24); border-top: 1px solid var(--border);
+      background: var(--background-weak);
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field__label { font-size: var(--type-s-size); font-weight: 500; color: var(--text); }
+    .field__hint  { font-size: var(--type-s-size); color: var(--text-weak); }
+    .input {
+      height: 36px; padding: 0 12px;
+      border: 1px solid var(--border-strong); border-radius: 6px;
+      background: var(--background-weak); color: var(--text);
+      font-family: inherit; font-size: var(--type-m-size);
+      letter-spacing: var(--type-m-track); width: 100%;
+    }
+    .input:focus { outline: none; border-color: var(--selected-border); box-shadow: 0 0 0 2px var(--selected-background); }
+    .input::placeholder { color: var(--text-disabled); }
+
+    /* Icon + color picker */
+    .swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .swatch {
+      width: var(--sizing-28); height: var(--sizing-28); border-radius: 6px;
+      border: 2px solid transparent; cursor: pointer; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: transform 100ms ease;
+    }
+    .swatch:hover { transform: scale(1.08); }
+    .swatch--on { border-color: var(--text); }
+    .glyphs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .glyph {
+      width: var(--sizing-28); height: var(--sizing-28); border-radius: 6px;
+      border: 1px solid var(--border-strong); background: var(--background-weak);
+      cursor: pointer; color: var(--icon);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .glyph:hover { background: var(--background-medium); }
+    .glyph--on { border-color: var(--selected-border); background: var(--selected-background); color: var(--selected-text); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       BUILDER — full-screen overlay. Build | Settings.
+       ══════════════════════════════════════════════════════════════════ */
+    .builder {
+      position: fixed; inset: 0; z-index: 50;
+      background: var(--background-medium);
+      display: none; flex-direction: column;
+    }
+    .builder--on { display: flex; }
+    /* White header, 56px — matches .builder__head in builder-mvp */
+    .bld__topbar {
+      position: relative;
+      height: 56px; flex-shrink: 0;
+      display: flex; align-items: center; gap: var(--spacing-12);
+      padding: 0 var(--spacing-16);
+      background: var(--background-weak);
+      border-bottom: 1px solid var(--border);
+    }
+    .bld__id { display: flex; align-items: center; gap: var(--spacing-8); min-width: 0; }
+    .bld__name {
+      font-weight: 500; color: var(--text); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+    }
+    .bld__badge {
+      font-size: var(--type-s-size); letter-spacing: 0;
+      color: var(--text-weak); padding: 0 6px; height: 18px;
+      display: inline-flex; align-items: center;
+      background: var(--background-strong); border-radius: 4px;
+    }
+    /* Build | Settings segmented control, centred.
+       Lifted verbatim from builder-mvp's .segmented so the two prototypes
+       share one component rather than two lookalikes. No leading icons. */
+    .segmented {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      display: inline-flex; gap: 2px; padding: 2px;
+      background: var(--background-medium); border-radius: 6px;
+    }
+    .segmented__btn {
+      height: 24px; padding: 0 var(--spacing-12);
+      border: none; background: none; border-radius: 5px;
+      font-family: inherit; font-size: var(--type-s-size);
+      letter-spacing: 0; color: var(--text-weak); cursor: pointer;
+    }
+    .segmented__btn:hover { color: var(--text); }
+    .segmented__btn--active {
+      background: var(--background-weak); color: var(--text);
+      font-weight: 500; box-shadow: var(--shadow-medium);
+    }
+    .bld__actions { margin-left: auto; display: flex; align-items: center; gap: var(--spacing-8); }
+
+    /* ── Dotted canvas backdrop ───────────────────────────────────────
+       The grey working surface behind the preview frame and the settings
+       cards, matching the builder canvas in Figma. `circle at 1px 1px`
+       pins each dot to the tile origin so it stays crisp instead of
+       anti-aliasing into a smudge. */
+    .dotgrid {
+      --dot-color: rgba(0, 0, 0, 0.11);
+      --dot-gap: 16px;
+      background-color: var(--background-medium);
+      background-image: radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0);
+      background-size: var(--dot-gap) var(--dot-gap);
+    }
+
+    .bld__panes { flex: 1; min-height: 0; position: relative; }
+    .bld__pane { position: absolute; inset: 0; display: none; }
+    .bld__pane--on { display: flex; }
+
+    /* Build pane = a live preview of the app shell the user is composing */
+    .bld__stage {
+      flex: 1; min-width: 0; min-height: 0;
+      padding: var(--spacing-24);
+      display: flex; flex-direction: column; gap: var(--spacing-12);
+      overflow: hidden;
+    }
+    .bld__stage-bar {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      flex-shrink: 0;
+    }
+    .bld__stage-label { font-size: var(--type-s-size); font-weight: 500; color: var(--text-weak); }
+    .bld__stage-hint { font-size: var(--type-s-size); color: var(--text-weak); margin-left: auto; }
+
+    /* The framed preview — a real Asana shell, scaled to fit the stage */
+    .preview {
+      flex: 1; min-height: 0;
+      display: grid; grid-template-rows: var(--topbar-height) 1fr;
+      background: var(--background-medium);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--spacing-12);
+      overflow: hidden;
+      box-shadow: var(--shadow-large);
+    }
+    .preview__lower {
+      display: grid; grid-template-columns: var(--rail-width) 208px 1fr;
+      min-height: 0;
+    }
+    /* Inside the preview the composed sidebar is editable */
+    .preview .sidebar { border-top-left-radius: var(--spacing-8); }
+
+    /* ── Editable sections in the preview sidebar ────────────────────── */
+    .sec { display: flex; flex-direction: column; }
+    .sec__head {
+      display: flex; align-items: center; gap: 4px;
+      height: 28px; padding: 0 var(--spacing-8) 0 var(--spacing-12);
+      margin-top: var(--spacing-8);
+    }
+    .sec__name {
+      flex: 1; min-width: 0;
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      font-weight: 500; color: var(--text-weak);
+      border: 1px solid transparent; border-radius: 4px;
+      background: none; font-family: inherit; padding: 0 2px;
+      letter-spacing: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sec__name:hover { border-color: var(--border-strong); }
+    .sec__name:focus { outline: none; border-color: var(--selected-border); background: var(--background-weak); color: var(--text); }
+    .sec__tools { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
+    .sec:hover .sec__tools { opacity: 1; }
+    .sec__items { display: flex; flex-direction: column; padding: 0 var(--spacing-4); gap: 1px; }
+
+    .sec__item {
+      display: flex; align-items: center; gap: 6px;
+      height: 30px; padding: 0 6px; border-radius: 6px;
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      color: var(--text); cursor: grab; position: relative;
+    }
+    .sec__item:hover { background: var(--background-hover); }
+    .sec__item--sel { background: var(--background-active); }
+    .sec__item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sec__item-x { opacity: 0; }
+    .sec__item:hover .sec__item-x { opacity: 1; }
+    .sec__item--drag { opacity: 0.4; }
+    .sec__item--over { box-shadow: inset 0 2px 0 0 var(--primary-background-strong); }
+
+    /* Section reordering. The grip is the drag source so the name input stays
+       clickable; the drop cue is a line on the target's TOP edge, matching
+       the insert-before behaviour in the drop handler. */
+    .sec__grip { cursor: grab; }
+    .sec__grip:active { cursor: grabbing; }
+    .sec--drag { opacity: 0.4; }
+    .sec--over { box-shadow: inset 0 2px 0 0 var(--primary-background-strong); }
+
+    /* Add-object row inside a section */
+    .sec__add {
+      display: flex; align-items: center; gap: 6px;
+      height: 28px; margin: 1px var(--spacing-4) 0;
+      padding: 0 6px; border-radius: 6px;
+      border: none; background: none; cursor: pointer;
+      font-family: inherit; font-size: var(--type-s-size);
+      letter-spacing: 0; color: var(--text-weak); width: calc(100% - var(--spacing-8));
+    }
+    .sec__add:hover { background: var(--background-hover); color: var(--text); }
+    .sec__add svg { width: 12px; height: 12px; }
+
+    /* Add-section button, pinned under the list */
+    .sb__addsection {
+      display: flex; align-items: center; gap: 6px;
+      height: 32px; margin: var(--spacing-8) var(--spacing-8) 0;
+      padding: 0 var(--spacing-8); border-radius: 6px;
+      border: 1px dashed var(--border-strong); background: none;
+      cursor: pointer; font-family: inherit;
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      color: var(--text-weak); width: calc(100% - var(--spacing-16));
+    }
+    .sb__addsection:hover { border-color: var(--primary-background-strong); color: var(--selected-text); background: var(--selected-background); }
+    .sb__addsection svg { width: 12px; height: 12px; }
+
+    /* Blank-state coach mark in the preview sidebar */
+    .sb__blank {
+      margin: var(--spacing-8); padding: var(--spacing-12);
+      border-radius: var(--spacing-8);
+      background: var(--background-weak);
+      border: 1px solid var(--border);
+      font-size: var(--type-s-size); color: var(--text-weak); line-height: 16px;
+    }
+    .sb__blank strong { color: var(--text); font-weight: 500; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       TYPEAHEAD — pick an existing object
+       ══════════════════════════════════════════════════════════════════ */
+    .ta {
+      position: fixed; z-index: 70; width: 328px;
+      background: var(--background-weak);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--spacing-8);
+      box-shadow: var(--shadow-large);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    .ta--on { display: flex; }
+    .ta__inputwrap {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding: var(--spacing-8) var(--spacing-12);
+      border-bottom: 1px solid var(--border);
+    }
+    .ta__inputwrap svg { width: 14px; height: 14px; color: var(--icon); flex-shrink: 0; }
+    .ta__input {
+      flex: 1; border: none; outline: none; background: none;
+      font-family: inherit; font-size: var(--type-m-size);
+      letter-spacing: var(--type-m-track); color: var(--text);
+    }
+    .ta__input::placeholder { color: var(--text-disabled); }
+    .ta__list { max-height: 296px; overflow-y: auto; padding: var(--spacing-4); }
+    .ta__group {
+      padding: var(--spacing-8) var(--spacing-8) var(--spacing-4);
+      font-size: var(--type-s-size); font-weight: 500; color: var(--text-weak);
+      letter-spacing: 0;
+    }
+    .ta__opt {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding: 6px var(--spacing-8); border-radius: 6px; cursor: pointer;
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+    }
+    .ta__opt:hover, .ta__opt--cursor { background: var(--background-hover); }
+    .ta__opt--cursor { background: var(--selected-background); }
+    .ta__opt-body { flex: 1; min-width: 0; }
+    .ta__opt-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ta__opt-meta { font-size: var(--type-s-size); color: var(--text-weak); letter-spacing: 0; }
+    .ta__opt-added { font-size: var(--type-s-size); color: var(--text-disabled); letter-spacing: 0; }
+    .ta__opt--dis { opacity: 0.5; cursor: default; }
+    .ta__opt--dis:hover { background: none; }
+    .ta__empty { padding: var(--spacing-16) var(--spacing-12); font-size: var(--type-s-size); color: var(--text-weak); text-align: center; }
+    .ta__foot {
+      display: flex; align-items: center;
+      padding: var(--spacing-8) var(--spacing-12);
+      border-top: 1px solid var(--border);
+    }
+    /* Blue "Create new" CTA. Inert in this prototype, so the cursor stays
+       default rather than promising a click it can't honour. Keyboard
+       navigation still works — only the shortcut hints went away. */
+    .ta__cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--primary-background-strong);
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      font-weight: 500;
+    }
+    .ta__cta svg { width: 12px; height: 12px; }
+
+    /* Highlighted match inside typeahead */
+    .hl { background: var(--cz-yellow-bg); color: var(--cz-yellow-fg); border-radius: 2px; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SETTINGS PANE — access control
+       ══════════════════════════════════════════════════════════════════ */
+    .set {
+      flex: 1; min-height: 0; overflow-y: auto;
+      display: flex; justify-content: center;
+      padding: var(--spacing-24);
+    }
+    .set__col { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: var(--spacing-24); }
+    .set__card {
+      background: var(--background-weak);
+      border: 1px solid var(--border); border-radius: var(--spacing-12);
+      overflow: hidden;
+    }
+    .set__cardhead {
+      padding: var(--spacing-16) var(--spacing-16) var(--spacing-12);
+      border-bottom: 1px solid var(--border);
+    }
+    .set__cardtitle { font-weight: 500; color: var(--text); }
+    .set__cardsub { font-size: var(--type-s-size); color: var(--text-weak); margin-top: 2px; }
+
+    .acc-row {
+      display: flex; align-items: center; gap: var(--spacing-12);
+      padding: var(--spacing-12) var(--spacing-16);
+      border-bottom: 1px solid var(--border);
+    }
+    .acc-row:last-child { border-bottom: none; }
+    .acc-row__body { flex: 1; min-width: 0; }
+    .acc-row__name { color: var(--text); }
+    .acc-row__meta { font-size: var(--type-s-size); color: var(--text-weak); }
+    .avatar {
+      width: var(--sizing-28); height: var(--sizing-28); border-radius: 500px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: var(--type-s-size); flex-shrink: 0;
+      border: 1px solid var(--avatar-hairline);
+    }
+    .select {
+      height: 28px; padding: 0 24px 0 8px;
+      border: 1px solid var(--border-strong); border-radius: 6px;
+      background: var(--background-weak) ; color: var(--text);
+      font-family: inherit; font-size: var(--type-s-size); letter-spacing: 0;
+      cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%23757677' stroke-width='1.4' stroke-linecap='round'/></svg>");
+      background-repeat: no-repeat; background-position: right 7px center;
+    }
+    /* Radio-ish general access options */
+    .opt-row {
+      display: flex; align-items: flex-start; gap: var(--spacing-12);
+      padding: var(--spacing-12) var(--spacing-16);
+      border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    .opt-row:last-child { border-bottom: none; }
+    .opt-row:hover { background: var(--background-hover); }
+    .radio {
+      width: 16px; height: 16px; border-radius: 500px; flex-shrink: 0;
+      border: 1.5px solid var(--border-active); margin-top: 3px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .opt-row--on .radio { border-color: var(--primary-background-strong); }
+    .opt-row--on .radio::after {
+      content: ''; width: 8px; height: 8px; border-radius: 500px;
+      background: var(--primary-background-strong);
+    }
+    .opt-row__title { color: var(--text); }
+    .opt-row__sub { font-size: var(--type-s-size); color: var(--text-weak); margin-top: 1px; }
+
+    .banner {
+      display: flex; align-items: flex-start; gap: var(--spacing-8);
+      padding: var(--spacing-12); border-radius: var(--spacing-8);
+      background: var(--selected-background); color: var(--selected-text);
+      font-size: var(--type-s-size); line-height: 18px;
+    }
+    .banner svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       CONTENT RENDERERS — what an object looks like once opened
+       ══════════════════════════════════════════════════════════════════ */
+    .empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: var(--spacing-8);
+      padding: var(--spacing-24); text-align: center; color: var(--text-weak);
+    }
+    .empty__art {
+      width: 56px; height: 56px; border-radius: var(--spacing-12);
+      background: var(--background-strong); color: var(--icon);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: var(--spacing-4);
+    }
+    .empty__art svg { width: 24px; height: 24px; }
+    .empty__title { font-weight: 500; color: var(--text); font-size: var(--type-m-size); }
+    .empty__sub { font-size: var(--type-s-size); max-width: 320px; line-height: 18px; }
+
+    .tabs { display: flex; align-items: center; gap: var(--spacing-4); padding: 0 var(--spacing-24); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab {
+      height: 36px; padding: 0 var(--spacing-8); border: none; background: none;
+      color: var(--text-weak); cursor: pointer; font-family: inherit;
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      position: relative;
+    }
+    .tab--on { color: var(--text); font-weight: 500; }
+    .tab--on::after {
+      content: ''; position: absolute; left: var(--spacing-8); right: var(--spacing-8);
+      bottom: -1px; height: 2px; background: var(--text); border-radius: 2px;
+    }
+
+
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: var(--spacing-12); }
+    .metric {
+      padding: var(--spacing-16); border: 1px solid var(--border);
+      border-radius: var(--spacing-8); background: var(--background-weak);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .metric__label { font-size: var(--type-s-size); color: var(--text-weak); text-transform: uppercase; letter-spacing: 0.04em; }
+    .metric__value {
+      font-family: var(--font-display); font-size: var(--type-h3-size);
+      line-height: var(--type-h3-line); letter-spacing: var(--type-h3-track); font-weight: 500;
+    }
+    .metric__delta { font-size: var(--type-s-size); color: var(--text-weak); }
+    .up   { color: #0e7a4a; }
+    .down { color: #b4382e; }
+
+    .tasklist { display: flex; flex-direction: column; }
+    .task {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      height: var(--row-height); border-bottom: 1px solid var(--border);
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+    }
+    .task:last-child { border-bottom: none; }
+    .check {
+      width: 16px; height: 16px; border-radius: 500px; flex-shrink: 0;
+      border: 1.5px solid var(--border-strong);
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; color: transparent;
+    }
+    .task--done .check { background: #0e7a4a; border-color: #0e7a4a; color: #fff; }
+    .task--done .task__name { color: var(--text-weak); text-decoration: line-through; }
+    .task__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .task__meta { font-size: var(--type-s-size); color: var(--text-weak); }
+
+    .doc { max-width: 680px; display: flex; flex-direction: column; gap: var(--spacing-12); }
+    .doc h4 { font-size: var(--type-m-size); font-weight: 500; }
+    .doc p  { font-size: var(--type-m-size); color: var(--text-weak); line-height: 22px; }
+    .doc ul { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .doc li { font-size: var(--type-m-size); color: var(--text-weak); }
+
+    .people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: var(--spacing-12); }
+    .person {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding: var(--spacing-12); border: 1px solid var(--border);
+      border-radius: var(--spacing-8);
+    }
+    .person__name { font-size: var(--type-m-size); }
+    .person__role { font-size: var(--type-s-size); color: var(--text-weak); }
+
+
+    /* ══════════════════════════════════════════════════════════════════
+       PORTFOLIO VIEW — lifted from builder-mvp's portfolio chrome so a
+       portfolio opened here is visually the same object as in that
+       prototype. Namespaced with pf- and pfg- prefixes because this file's
+       .pill and .grid already mean something else (status badges, generic
+       tables). NB: never write a "star slash" glob inside a CSS comment —
+       it terminates the comment and the remaining text eats the next rule.
+       ══════════════════════════════════════════════════════════════════ */
+    /* One inset for the header, toolbar and grid. They were 24/24/20, which
+       left the title 4px out of alignment with the first column — and the
+       grid zeroes its first cell's padding, so the wrap's inset IS the text
+       edge. Keep all three equal or the column never lines up with the title. */
+    .canvas { --pf-inset: 20px; }
+    .pf-head { padding: var(--pf-inset) var(--pf-inset) 0; flex-shrink: 0; }
+    .pf-head__crumb { font-size: 11.5px; color: var(--text-weak); margin-bottom: 4px; }
+    .pf-head__top { display: flex; align-items: center; gap: var(--spacing-8); }
+    /* Colour comes from the portfolio's own hue, set inline — the page header
+       must match the sidebar row for the same object. */
+    .pf-head__icon {
+      width: var(--sizing-24); height: var(--sizing-24); flex-shrink: 0;
+      border-radius: 5px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .pf-head__name {
+      font-family: var(--font-display);
+      font-size: var(--type-xl-size); line-height: var(--type-xl-line);
+      letter-spacing: var(--type-xl-track); font-weight: 500; color: var(--text);
+    }
+    .pf-head__actions { margin-left: auto; display: inline-flex; align-items: center; gap: var(--spacing-8); }
+    .pf-head__sep { width: 1px; height: 16px; background: var(--border-strong); }
+    .pf-head__tabs {
+      display: flex; align-items: center; gap: var(--spacing-4);
+      margin-top: var(--spacing-8);
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .pf-head__tabs::-webkit-scrollbar { display: none; }
+    /* Dashboards have no views, so no tab bar. The tabs were supplying the
+       gap above the toolbar, so restore it here. */
+    .pf-head--flush { padding-bottom: var(--spacing-12); }
+
+    .avatar-24 {
+      width: var(--sizing-24); height: var(--sizing-24); border-radius: 500px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      border: 1px solid var(--avatar-hairline); flex-shrink: 0;
+    }
+    .facepile { display: inline-flex; }
+    .facepile > .avatar-24 { margin-left: -6px; box-shadow: 0 0 0 2px var(--background-weak); }
+    .facepile > .avatar-24:first-child { margin-left: 0; }
+
+    /* Underline tabs, as in builder-mvp */
+    .db-tab {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 28px; padding: 0 var(--spacing-8);
+      border: none; background: none; border-radius: 6px;
+      color: var(--text-weak); cursor: pointer; font-family: inherit;
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      position: relative; white-space: nowrap; flex-shrink: 0;
+    }
+    .db-tab svg { width: 14px; height: 14px; }
+    .db-tab--active { color: var(--text); font-weight: 500; }
+    .db-tab--active::after {
+      content: ''; position: absolute; left: var(--spacing-8); right: var(--spacing-8);
+      bottom: -6px; height: 2px; background: var(--text); border-radius: 2px;
+    }
+
+    .pf-toolbar {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      height: 48px; padding: 0 var(--pf-inset);
+      flex-shrink: 0; border-bottom: 1px solid var(--border);
+    }
+    .pf-toolbar__right { margin-left: auto; display: inline-flex; align-items: center; gap: var(--spacing-12); }
+    .pf-toolbar__item {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: var(--type-s-size); color: var(--text-weak);
+      letter-spacing: 0; cursor: pointer;
+    }
+    .pf-toolbar__item:hover { color: var(--text); }
+
+    .pf-body { flex: 1; min-height: 0; overflow: auto; }
+
+    /* Column dividers and no outer frame — the Figma grid treatment */
+    .pfg-wrap { padding: 0 var(--pf-inset); }
+    .pfg { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .pfg th, .pfg td {
+      height: var(--row-height); padding: 0 var(--spacing-8);
+      text-align: left; vertical-align: middle;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track);
+    }
+    .pfg th:last-child, .pfg td:last-child { border-right: none; }
+    .pfg th {
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      font-weight: 500; color: var(--text-weak); letter-spacing: 0; white-space: nowrap;
+    }
+    .pfg td:first-child, .pfg th:first-child { padding-left: 0; }
+    .pfg tbody tr { cursor: pointer; }
+    .pfg tbody tr:hover td { background: var(--background-hover); }
+    .pfg__add {
+      display: flex; align-items: center; height: 38px;
+      color: var(--text-weak); font-size: var(--type-m-size);
+      letter-spacing: var(--type-m-track); cursor: pointer;
+    }
+    /* ══════════════════════════════════════════════════════════════════
+       DASHBOARDS — number cards on top, chart cards below
+       ══════════════════════════════════════════════════════════════════ */
+    .dash { padding: var(--pf-inset); display: flex; flex-direction: column; gap: var(--spacing-24); }
+    .dash__nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--spacing-12); }
+    .dash__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-12); }
+    @media (max-width: 1080px) {
+      .dash__nums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dash__grid { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    .dcard {
+      display: flex; flex-direction: column;
+      border: 1px solid var(--border); border-radius: var(--spacing-8);
+      background: var(--background-weak); overflow: hidden; min-width: 0;
+    }
+    /* A chart that needs the full row rather than half of it */
+    .dcard--wide { grid-column: 1 / -1; }
+    .dcard__title {
+      padding: var(--spacing-16) var(--spacing-16) var(--spacing-8);
+      font-size: var(--type-m-size); font-weight: 500; color: var(--text);
+      letter-spacing: var(--type-m-track);
+    }
+    .dcard__body { padding: 0 var(--spacing-16) var(--spacing-8); min-width: 0; }
+    .dcard__foot {
+      margin-top: auto;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--spacing-8) var(--spacing-12) var(--spacing-8) var(--spacing-16);
+      border-top: 1px solid var(--border);
+    }
+    .dcard__filter {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: var(--type-s-size); color: var(--text-weak); letter-spacing: 0;
+    }
+    .dcard__filter svg { width: 12px; height: 12px; }
+
+    /* Number card */
+    .dcard--num .dcard__title { padding-bottom: 0; }
+    .dnum {
+      padding: var(--spacing-8) var(--spacing-16) 0;
+      font-family: var(--font-display); font-weight: 400;
+      font-size: 40px; line-height: 48px; letter-spacing: -0.5px;
+      color: var(--text); font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .dnum__sub {
+      padding: 2px var(--spacing-16) var(--spacing-12);
+      font-size: var(--type-s-size); color: var(--text-weak);
+    }
+
+    /* Donut + legend */
+    .ddonut { display: flex; align-items: center; gap: var(--spacing-16); padding: var(--spacing-8) 0; }
+    .ddonut__svg { width: 158px; height: 158px; flex-shrink: 0; }
+    .ddonut__total {
+      font-family: var(--font-display); font-size: 26px; font-weight: 500;
+      fill: var(--text); letter-spacing: 0.35px;
+    }
+    .dlegend { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+    .dlegend__row { display: flex; align-items: center; gap: var(--spacing-8); font-size: var(--type-s-size); min-width: 0; }
+    .dlegend__sw { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+    .dlegend__lab { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dlegend__val { color: var(--text-weak); font-variant-numeric: tabular-nums; }
+
+    /* Shared SVG chart type */
+    .dchart { width: 100%; height: auto; display: block; }
+    .dval  { font-size: 11px; font-weight: 500; fill: var(--text); font-family: var(--font-text); }
+    .dlab  { font-size: 10px; fill: var(--text-weak); font-family: var(--font-text); }
+    .davatar { font-size: 9px; font-weight: 500; fill: var(--text); font-family: var(--font-text); }
+    .daxis { stroke: var(--border-strong); stroke-width: 1; }
+    .dgrid { stroke: var(--border); stroke-width: 1; }
+    .dmore { font-size: 10px; fill: var(--text-weak); font-family: var(--font-text); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       RECORD PANE — 680px, overlays the canvas from the right.
+       Lifted from builder-mvp's record pane. Its section and metric
+       classes are namespaced pn-* here because .sec already means a
+       builder sidebar section in this file, and .metric a dashboard tile.
+       ══════════════════════════════════════════════════════════════════ */
+    .pane {
+      position: absolute; top: 0; right: 0; bottom: 0;
+      width: var(--pane-width); max-width: 100%;
+      display: flex; flex-direction: column;
+      background: var(--background-weak);
+      border-left: 1px solid var(--border);
+      box-shadow: var(--shadow-large);
+      z-index: 20;
+      transform: translateX(8px); opacity: 0;
+      transition: transform 160ms ease, opacity 160ms ease;
+    }
+    .pane--on { transform: translateX(0); opacity: 1; }
+    .pane__topbar {
+      display: flex; align-items: center;
+      height: 56px; padding: 0 var(--pane-inset);
+      flex-shrink: 0; border-bottom: 1px solid var(--border);
+    }
+    .pane__crumb {
+      display: inline-flex; align-items: center; gap: var(--spacing-8);
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); color: var(--text);
+    }
+    .pane__actions { display: flex; align-items: center; gap: var(--spacing-4); margin-left: auto; }
+    .pane__sep { width: 1px; height: 16px; background: #d9d9d9; margin: 0 var(--spacing-4); }
+    .pane__body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--spacing-16); }
+
+    .pane__title-wrap { padding: 0 var(--pane-inset); }
+    .pane__title {
+      display: flex; align-items: center; min-height: 64px;
+      font-family: var(--font-display);
+      font-size: var(--type-h3-size); line-height: var(--type-h3-line);
+      letter-spacing: var(--type-h3-track); font-weight: 500; color: var(--text);
+    }
+
+    /* Pinned meta chips under the title */
+    .pane__meta {
+      display: flex; align-items: center; gap: var(--spacing-8); flex-wrap: wrap;
+      min-height: 28px; padding: 0 var(--pane-inset) var(--spacing-8);
+    }
+    .meta-field { display: inline-flex; align-items: center; gap: var(--spacing-8); }
+    .meta-field__label {
+      padding-left: var(--spacing-4);
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      color: var(--text-weak); letter-spacing: 0;
+    }
+    .meta-field__pill {
+      display: inline-flex; align-items: center; height: 20px;
+      padding: 0 var(--spacing-8); border-radius: 500px;
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      letter-spacing: 0; white-space: nowrap;
+    }
+
+    /* Sections */
+    .pn-sec { padding: 0 var(--pane-inset); margin-bottom: var(--spacing-24); }
+    .pn-sec__title { display: flex; align-items: center; gap: var(--spacing-8); min-height: 20px; }
+    .pn-sec__title > .ico { color: var(--icon); }
+    .pn-sec__label {
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      color: var(--text-weak); letter-spacing: 0;
+    }
+    .pn-sec__body { padding-top: var(--spacing-12); }
+
+    /* Key metrics — 3 tiles */
+    .pn-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-8); }
+    .pn-metric { background: var(--background-strong); border-radius: var(--spacing-8); padding: var(--spacing-12); }
+    .pn-metric__label {
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      color: var(--text-weak); letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .pn-metric__value {
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); font-weight: 500; color: var(--text); margin-top: 2px;
+    }
+    .pn-metric__sub { font-size: var(--type-s-size); line-height: var(--type-s-line); color: var(--text-weak); letter-spacing: 0; }
+
+    /* Branding asset */
+    .branding-img { display: block; width: 100%; height: 251px; object-fit: cover; border-radius: var(--spacing-8); }
+    .branding-empty {
+      display: flex; align-items: center; gap: var(--spacing-12);
+      padding: var(--spacing-16);
+      border: 1px dashed var(--border-strong); border-radius: var(--spacing-8);
+      background: var(--background-medium);
+    }
+    /* Fixed-size chip. A bare <svg> with no width/height is a flex item with
+       no intrinsic size, so dropped straight in here it stretched to fill the
+       whole panel — the 390px plus. Always box an icon. */
+    .branding-empty__chip {
+      width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--background-weak);
+      border: 1px solid var(--border-strong);
+      color: var(--icon);
+    }
+    .branding-empty__text { display: flex; flex-direction: column; min-width: 0; }
+    .branding-empty__title {
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); color: var(--text);
+    }
+    .branding-empty__hint {
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      letter-spacing: 0; color: var(--text-weak);
+    }
+
+    /* Custom-field rows: 200px label / 1px divider / value */
+    .cf { padding: 0; }
+    .cf__row {
+      display: grid; grid-template-columns: var(--cf-label-width) 1px 1fr;
+      align-items: stretch; min-height: var(--row-height);
+      border-bottom: 1px solid var(--border);
+    }
+    .cf__row:last-child { border-bottom: none; }
+    .cf__label {
+      display: flex; align-items: center; gap: var(--spacing-8);
+      padding-right: var(--spacing-8);
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); color: var(--text-weak);
+    }
+    .cf__label .ico { color: var(--icon); }
+    .cf__divider { background: var(--border); }
+    .cf__value {
+      display: flex; align-items: center; gap: var(--spacing-4); flex-wrap: wrap;
+      padding: 7px var(--spacing-4) 7px var(--spacing-12);
+      font-size: var(--type-m-size); line-height: var(--type-m-line);
+      letter-spacing: var(--type-m-track); color: var(--text);
+    }
+
+    .count-pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 16px; height: 20px; padding: 0 5px;
+      border-radius: 500px; background: var(--background-strong);
+      font-size: var(--type-s-size); color: var(--text-weak); letter-spacing: 0;
+    }
+
+    /* Comment composer pinned at the bottom */
+    .composer {
+      flex-shrink: 0; margin: 0 var(--pane-inset) var(--pane-inset);
+      border: 1px solid var(--border-strong); border-radius: var(--spacing-8);
+      background: var(--background-weak);
+    }
+    .composer__input {
+      padding: var(--spacing-12); color: var(--text-disabled);
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+    }
+    .composer__tools {
+      display: flex; align-items: center; gap: var(--spacing-4);
+      padding: 0 var(--spacing-8) var(--spacing-8);
+    }
+    .composer__send { margin-left: auto; }
+
+    /* Selected row in the grid, while its pane is open */
+    .pfg tbody tr.is-open td { background: var(--background-active); }
+
+    .pfg__n { color: var(--text-weak); font-variant-numeric: tabular-nums; }
+    /* Confidential-record marker, as in Northline's property list */
+    .rec-lock {
+      display: inline-flex; vertical-align: -1px; margin-right: 5px; color: #b0801f;
+    }
+    .rec-lock svg { width: 11px; height: 11px; }
+    .pf-pill {
+      display: inline-flex; align-items: center;
+      height: var(--sizing-24); padding: 0 var(--spacing-8);
+      border-radius: 500px;
+      font-size: var(--type-s-size); line-height: var(--type-s-line);
+      letter-spacing: 0; white-space: nowrap;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(12px);
+      z-index: 90; display: flex; align-items: center; gap: var(--spacing-8);
+      padding: 10px var(--spacing-16); border-radius: var(--spacing-8);
+      background: var(--inverse-background-strong); color: var(--inverse-text);
+      font-size: var(--type-m-size); letter-spacing: var(--type-m-track);
+      box-shadow: var(--shadow-large);
+      opacity: 0; pointer-events: none; transition: opacity 180ms ease, transform 180ms ease;
+    }
+    .toast--on { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast svg { width: 14px; height: 14px; color: var(--cz-green-bg); }
+
+    @media (max-width: 1100px) {
+      .search { width: 320px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="proto-nav">
+  <span class="proto-nav__brand">Builder Studio MVP</span>
+  <span class="proto-steps" id="steps"></span>
+  <button class="proto-nav__reset" id="reset">Start over</button>
+</div>
+
+<div class="page">
+  <div class="app">
+    <div class="topbar">
+      <div class="topbar__left">
+        <button class="icon-btn" aria-label="Menu">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+        </button>
+        <button class="create-btn">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>
+          Create
+        </button>
+      </div>
+      <div class="search">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6 14 14"/></svg>
+        <span>Search</span>
+      </div>
+      <div class="topbar__right">
+        <button class="icon-btn" aria-label="Help">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.2"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.7 1.7c-.5.3-.9.7-.9 1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".75" fill="currentColor" stroke="none"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="app__lower">
+      <nav class="rail" id="rail" aria-label="Modes"></nav>
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="canvas" id="canvas"></main>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     BUILDER OVERLAY
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="builder" id="builder">
+  <div class="bld__topbar">
+    <div class="bld__id">
+      <span class="obj-av obj-av--sm" id="bld-av"></span>
+      <span class="bld__name" id="bld-name">Untitled app</span>
+      <span class="bld__badge" id="bld-badge">Draft</span>
+    </div>
+    <div class="segmented">
+      <button class="segmented__btn segmented__btn--active" data-bt="build">Build</button>
+      <button class="segmented__btn" data-bt="settings">Settings</button>
+    </div>
+    <div class="bld__actions">
+      <button class="btn btn--subtle btn--sm" id="bld-cancel">Cancel</button>
+      <button class="btn btn--primary btn--sm" id="bld-publish" disabled>Publish app</button>
+    </div>
+  </div>
+
+  <div class="bld__panes">
+    <!-- BUILD -->
+    <section class="bld__pane bld__pane--on" data-bp="build">
+      <div class="bld__stage dotgrid">
+        <div class="bld__stage-bar">
+          <span class="bld__stage-label">Preview</span>
+          <span class="bld__stage-hint" id="bld-hint">Add a section, then add objects into it</span>
+        </div>
+        <div class="preview">
+          <div class="topbar">
+            <div class="topbar__left">
+              <button class="icon-btn" aria-label="Menu">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+              </button>
+              <button class="create-btn">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>
+                Create
+              </button>
+            </div>
+            <div class="search">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6 14 14"/></svg>
+              <span>Search</span>
+            </div>
+            <div class="topbar__right"><span class="avatar-28">TK</span></div>
+          </div>
+          <div class="preview__lower">
+            <nav class="rail" id="pv-rail" aria-label="Modes"></nav>
+            <aside class="sidebar" id="pv-sidebar"></aside>
+            <main class="canvas" id="pv-canvas"></main>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="bld__pane" data-bp="settings">
+      <div class="set dotgrid"><div class="set__col" id="set-col"></div></div>
+    </section>
+  </div>
+</div>
+
+<!-- Name modal -->
+<div class="scrim" id="scrim">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal__head">
+      <span class="obj-av" id="modal-av"></span>
+      <span class="modal__title" id="modal-title">Name your app</span>
+    </div>
+    <div class="modal__body">
+      <div class="field">
+        <label class="field__label" for="app-name">App name</label>
+        <input class="input" id="app-name" placeholder="e.g. Northline" autocomplete="off">
+        <span class="field__hint">This is what people see in the sidebar and the app switcher.</span>
+      </div>
+      <div class="field">
+        <span class="field__label">Icon</span>
+        <div class="glyphs" id="glyphs"></div>
+      </div>
+      <div class="field">
+        <span class="field__label">Color</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+    </div>
+    <div class="modal__foot">
+      <button class="btn btn--subtle" id="modal-cancel">Cancel</button>
+      <button class="btn btn--primary" id="modal-create" disabled>Create app</button>
+    </div>
+  </div>
+</div>
+
+<!-- Typeahead -->
+<div class="ta" id="ta">
+  <div class="ta__inputwrap">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6 14 14"/></svg>
+    <input class="ta__input" id="ta-input" placeholder="Search projects, tables, portfolios…" autocomplete="off">
+  </div>
+  <div class="ta__list" id="ta-list"></div>
+  <div class="ta__foot">
+    <span class="ta__cta"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>Create new</span>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg><span id="toast-msg"></span></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   ICONS — the rail/sidebar glyphs are real Figma exports (filled paths,
+   fill="currentColor"). Object-type glyphs are drawn in the same FILLED
+   idiom rather than strokes, so they sit consistently beside the real ones.
+   ═══════════════════════════════════════════════════════════════════════ */
+const IC = {
+  // ── real Figma exports ──
+  work: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12.25 0C14.3211 0 16 1.67893 16 3.75C16 5.36305 14.9817 6.73826 13.5527 7.26758C13.2393 7.38364 13.0002 7.66485 13 7.99902C13 8.33342 13.2392 8.6153 13.5527 8.73145C14.9817 9.26087 16 10.6369 16 12.25C16 14.3211 14.3211 16 12.25 16C10.6371 15.9999 9.2618 14.9816 8.73242 13.5527C8.61613 13.239 8.33464 13 8 13C7.66536 13 7.38387 13.239 7.26758 13.5527C6.7382 14.9816 5.36297 16 3.75 16C1.67899 15.9999 0 14.321 0 12.25C1.00352e-07 10.637 1.01833 9.26094 2.44727 8.73145C2.76085 8.61528 3 8.33343 3 7.99902C2.99978 7.66485 2.76068 7.38367 2.44727 7.26758C1.01844 6.73816 0 5.36292 0 3.75C1.28836e-07 1.67902 1.67906 0.000148558 3.75 0C5.36296 0 6.73819 1.01843 7.26758 2.44727C7.38387 2.76104 7.66536 3 8 3C8.33464 3 8.61612 2.76104 8.73242 2.44727C9.2618 1.01844 10.6371 5.14791e-05 12.25 0ZM8 5C7.65349 5.0001 7.35765 5.23651 7.20996 5.5498C6.86703 6.27767 6.27766 6.86603 5.5498 7.20898C5.23593 7.35669 5 7.65336 5 8C5.0001 8.34651 5.23651 8.64235 5.5498 8.79004C6.27771 9.13299 6.86701 9.72229 7.20996 10.4502C7.35765 10.7639 7.65349 10.9999 8 11C8.34664 11 8.64331 10.7641 8.79102 10.4502C9.13397 9.72234 9.72233 9.13297 10.4502 8.79004C10.7639 8.64235 10.9999 8.34651 11 8C11 7.65336 10.7641 7.35669 10.4502 7.20898C9.72237 6.86604 9.13396 6.27763 8.79102 5.5498C8.64331 5.23593 8.34664 5 8 5Z" fill="currentColor"/></svg>',
+  agents: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15.4507 9.47557C15.8024 9.09341 16 8.5751 16 8.03464V7.98517C16 7.44474 15.8024 6.92639 15.4507 6.54424L9.98227 0.600955C8.80002 -0.683941 6.77876 0.228222 6.78154 2.04535L6.7881 6.32806C6.78867 6.69625 6.51416 6.99504 6.17538 6.99497C6.01294 6.99494 5.85716 6.9248 5.7423 6.79996L3.23199 4.07168C2.03957 2.77573 -0.00147466 3.6981 7.99507e-07 5.53223L0.00409749 10.5158C0.0056496 12.3466 2.04186 13.2596 3.23396 11.9641L5.66326 9.3239C5.78744 9.18894 5.95587 9.11313 6.13149 9.11316C6.49665 9.11323 6.7928 9.43461 6.79341 9.83148L6.79975 13.9616C6.80257 15.7754 8.82036 16.6817 10.0005 15.3991L15.4507 9.47557Z" fill="currentColor"/></svg>',
+  strategy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm0 2.6a5.4 5.4 0 1 1 0 10.8 5.4 5.4 0 0 1 0-10.8Zm0 2.2a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z" fill="currentColor"/></svg>',
+  knowledge: '<svg width="16" height="16" viewBox="0 0 16.0003 16.0029" fill="none"><path d="M10.4995 0.489057C10.4995 0.212914 10.2745 -0.0121668 9.99862 0.000510566C6.30502 0.170259 4.09259 2.16694 0.470295 2.53611C0.207087 2.56294 0 2.78056 0 3.04513V14.274C0 14.5501 0.225117 14.7753 0.500932 14.7619C3.88481 14.5968 5.87261 12.799 8.92622 12.3069C9.21885 12.2598 9.47618 12.4921 9.47618 12.7885V15.5258C9.47618 15.8019 9.70088 16.0286 9.97559 16.0005C12.1189 15.7816 13.4021 14.1811 15.5003 13.9578C15.7749 13.9285 15.9997 13.7076 15.9997 13.4314L16.0003 4.7108C16.0003 4.43466 15.7755 4.20824 15.5006 4.23461C13.8014 4.39761 12.6012 5.38701 11.1179 5.93587C10.8103 6.04968 10.4995 5.81161 10.4995 5.48363V0.489057Z" fill="currentColor"/></svg>',
+  people: '<svg width="15.8615" height="16" viewBox="0 0 15.8615 16" fill="none"><path d="M7.93074 0C10.4159 0.000170787 12.4307 2.01482 12.4307 4.5C12.4307 6.15894 11.5321 7.60694 10.1959 8.38713C10.0365 8.48023 9.93074 8.64701 9.93074 8.83165C9.93074 9.05911 10.089 9.25486 10.3085 9.31457C13.2149 10.1052 15.4113 12.307 15.8504 15.0041C15.9391 15.5492 15.483 16 14.9307 16H0.930744C0.37846 16 -0.0776397 15.5492 0.011094 15.0041C0.450183 12.3066 2.64657 10.1048 5.55355 9.31439C5.77272 9.2548 5.93074 9.05935 5.93074 8.83222C5.93074 8.64784 5.82514 8.48129 5.66589 8.38836C4.3291 7.60827 3.43074 6.15944 3.43074 4.5C3.43074 2.01472 5.44546 -3.25905e-07 7.93074 0Z" fill="currentColor"/></svg>',
+  more: '<svg width="16" height="4" viewBox="0 0 16 4" fill="none"><path d="M10 2C10 3.10457 9.10457 4 8 4C6.89543 4 6 3.10457 6 2C6 0.89543 6.89543 0 8 0C9.10457 0 10 0.89543 10 2Z" fill="currentColor"/><path d="M4 2C4 3.10457 3.10457 4 2 4C0.89543 4 0 3.10457 0 2C0 0.89543 0.89543 0 2 0C3.10457 0 4 0.89543 4 2Z" fill="currentColor"/><path d="M16 2C16 3.10457 15.1046 4 14 4C12.8954 4 12 3.10457 12 2C12 0.89543 12.8954 0 14 0C15.1046 0 16 0.89543 16 2Z" fill="currentColor"/></svg>',
+  page: '<svg width="13" height="16" viewBox="0 0 13 16" fill="none"><path d="M2.5 8.5C2.5 8.2235 2.7235 8 3 8H7C7.2765 8 7.5 8.2235 7.5 8.5C7.5 8.7765 7.2765 9 7 9H3C2.7235 9 2.5 8.7765 2.5 8.5ZM3 11H9.989C10.2655 11 10.489 10.7765 10.489 10.5C10.489 10.2235 10.2655 10 9.989 10H3C2.7235 10 2.5 10.2235 2.5 10.5C2.5 10.7765 2.7235 11 3 11ZM10 12H3.011C2.7345 12 2.511 12.2235 2.511 12.5C2.511 12.7765 2.7345 13 3.011 13H10C10.2765 13 10.5 12.7765 10.5 12.5C10.5 12.2235 10.2765 12 10 12ZM13 6.8285V13C13 14.6545 11.6545 16 10 16H3C1.3455 16 0 14.6545 0 13V3C0 1.3455 1.3455 0 3 0H6.379C6.406 0 6.4325 0.007 6.46 0.008C6.474 0.007 6.486 0 6.5005 0C6.543 0 6.581 0.014 6.6205 0.024C7.0605 0.0785 7.479 0.2705 7.7935 0.586L12.268 5.0605C12.74 5.5325 13 6.1605 13 6.8285ZM7.086 1.293C7.0595 1.2665 7.029 1.246 7 1.2225V5C7 5.5515 7.4485 6 8 6H11.7505C11.6955 5.9175 11.632 5.8395 11.5605 5.7675L7.086 1.293ZM12 13V7H8C6.897 7 6 6.103 6 5V1H3C1.897 1 1 1.897 1 3V13C1 14.103 1.897 15 3 15H10C11.103 15 12 14.103 12 13Z" fill="currentColor"/></svg>',
+  table: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 14H11C12.6545 14 14 12.6545 14 11V3C14 1.345 12.6545 0 11 0H3C1.3455 0 0 1.345 0 3V11C0 12.6545 1.3455 14 3 14ZM9 13H5V6H9V13ZM13 11C13 12.103 12.103 13 11 13H10V6H13V11ZM1 3C1 1.897 1.897 1 3 1H11C12.103 1 13 1.897 13 3V5H1V3ZM1 6H4V13H3C1.897 13 1 12.103 1 11V6Z" fill="currentColor"/></svg>',
+  calendar: '<svg width="14" height="15" viewBox="0 0 14 15" fill="none"><path d="M3.5 0C3.36739 0 3.24021 0.0526784 3.14645 0.146447C3.05268 0.240215 3 0.367392 3 0.5V1C1.345 1 0 2.3455 0 4V12C0 13.6545 1.345 15 3 15H11C12.6545 15 14 13.6545 14 12V4C14 2.3455 12.6545 1 11 1V0.5C11 0.367392 10.9473 0.240215 10.8536 0.146447C10.7598 0.0526784 10.6326 0 10.5 0C10.3674 0 10.2402 0.0526784 10.1464 0.146447C10.0527 0.240215 10 0.367392 10 0.5V1H4V0.5C4 0.367392 3.94732 0.240215 3.85355 0.146447C3.75979 0.0526784 3.63261 0 3.5 0ZM13 12C13 13.103 12.103 14 11 14H3C1.897 14 1 13.103 1 12V6H13V12ZM10 2V2.5C10 2.63261 10.0527 2.75979 10.1464 2.85355C10.2402 2.94732 10.3674 3 10.5 3C10.6326 3 10.7598 2.94732 10.8536 2.85355C10.9473 2.75979 11 2.63261 11 2.5V2C12.103 2 13 2.897 13 4V5H1V4C1 2.897 1.897 2 3 2V2.5C3 2.63261 3.05268 2.75979 3.14645 2.85355C3.24021 2.94732 3.36739 3 3.5 3C3.63261 3 3.75979 2.94732 3.85355 2.85355C3.94732 2.75979 4 2.63261 4 2.5V2H10Z" fill="currentColor"/></svg>',
+
+  // ── drawn in the same filled idiom ──
+  build: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.3 1.2a.6.6 0 0 1 .84-.13l1.5 1.13a.6.6 0 0 1 .12.84L7.6 4.5l1.35 1.02 1.02-1.36a2.9 2.9 0 0 1 4.06-.58 2.9 2.9 0 0 1 .58 4.06l-1.02 1.35 1.36 1.02a.6.6 0 0 1 .12.84l-1.13 1.5a.6.6 0 0 1-.84.12L2.1 5.62a.6.6 0 0 1-.12-.84L3.1 3.28a.6.6 0 0 1 .84-.12L5.3 4.18 6.3 1.2Z" fill="currentColor" opacity=".22"/><path d="M2.66 12.2 8.5 6.36l1.13 1.13-5.84 5.84a.8.8 0 0 1-1.13-1.13Z" fill="currentColor"/><path d="M10.06 1.3a.5.5 0 0 1 .88 0l.86 1.6 1.78.3a.5.5 0 0 1 .27.85l-1.27 1.28.28 1.78a.5.5 0 0 1-.73.52L10.5 6.8 8.87 7.63a.5.5 0 0 1-.72-.52l.28-1.78L7.15 4.05a.5.5 0 0 1 .28-.85l1.78-.3.85-1.6Z" fill="currentColor"/></svg>',
+  portfolio: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 1.5A1.5 1.5 0 0 0 4.5 3v.5H3A2.5 2.5 0 0 0 .5 6v6A2.5 2.5 0 0 0 3 14.5h10a2.5 2.5 0 0 0 2.5-2.5V6A2.5 2.5 0 0 0 13 3.5h-1.5V3A1.5 1.5 0 0 0 10 1.5H6Zm0 1.2h4a.3.3 0 0 1 .3.3v.5H5.7V3a.3.3 0 0 1 .3-.3ZM3 4.7h10A1.3 1.3 0 0 1 14.3 6v1.4H1.7V6A1.3 1.3 0 0 1 3 4.7Zm-1.3 3.9h4.6V10h3.4V8.6h4.6V12a1.3 1.3 0 0 1-1.3 1.3H3A1.3 1.3 0 0 1 1.7 12V8.6Z" fill="currentColor"/></svg>',
+  project: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 1.5A2.5 2.5 0 0 0 .5 4v8A2.5 2.5 0 0 0 3 14.5h10a2.5 2.5 0 0 0 2.5-2.5V4A2.5 2.5 0 0 0 13 1.5H3Zm0 1.2h10A1.3 1.3 0 0 1 14.3 4v.9H1.7V4A1.3 1.3 0 0 1 3 2.7Zm-1.3 3.4h3.1v7.2H3A1.3 1.3 0 0 1 1.7 12V6.1Zm4.3 0h8.3V12a1.3 1.3 0 0 1-1.3 1.3H6V6.1Zm1.3 1.6a.6.6 0 0 0 0 1.2h5a.6.6 0 0 0 0-1.2h-5Zm0 2.6a.6.6 0 0 0 0 1.2h3.2a.6.6 0 0 0 0-1.2H7.3Z" fill="currentColor"/></svg>',
+  dashboard: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.6 1.5A2.1 2.1 0 0 0 .5 3.6v2.2a2.1 2.1 0 0 0 2.1 2.1h2.2a2.1 2.1 0 0 0 2.1-2.1V3.6A2.1 2.1 0 0 0 4.8 1.5H2.6Zm8.6 0A2.1 2.1 0 0 0 9.1 3.6v2.2a2.1 2.1 0 0 0 2.1 2.1h2.2a2.1 2.1 0 0 0 2.1-2.1V3.6a2.1 2.1 0 0 0-2.1-2.1h-2.2ZM2.6 2.7h2.2a.9.9 0 0 1 .9.9v2.2a.9.9 0 0 1-.9.9H2.6a.9.9 0 0 1-.9-.9V3.6a.9.9 0 0 1 .9-.9Zm8.6 0h2.2a.9.9 0 0 1 .9.9v2.2a.9.9 0 0 1-.9.9h-2.2a.9.9 0 0 1-.9-.9V3.6a.9.9 0 0 1 .9-.9ZM2.6 9.2A2.1 2.1 0 0 0 .5 11.3v1.1a2.1 2.1 0 0 0 2.1 2.1h2.2A2.1 2.1 0 0 0 6.9 12.4v-1.1A2.1 2.1 0 0 0 4.8 9.2H2.6Zm8.6 0a2.1 2.1 0 0 0-2.1 2.1v1.1a2.1 2.1 0 0 0 2.1 2.1h2.2a2.1 2.1 0 0 0 2.1-2.1v-1.1a2.1 2.1 0 0 0-2.1-2.1h-2.2Z" fill="currentColor"/></svg>',
+  goal: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm0 1.3a6.2 6.2 0 1 1 0 12.4A6.2 6.2 0 0 1 8 1.8Zm0 2a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Zm0 1.3a2.9 2.9 0 1 1 0 5.8 2.9 2.9 0 0 1 0-5.8Zm0 1.5a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" fill="currentColor"/></svg>',
+  home: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8.62 1.2a1 1 0 0 0-1.24 0L1.7 5.72A2 2 0 0 0 .95 7.3V13a2 2 0 0 0 2 2h10.1a2 2 0 0 0 2-2V7.3a2 2 0 0 0-.75-1.56L8.62 1.2Zm-.62 1.1 5.06 4.02a1 1 0 0 1 .37.78V13a1 1 0 0 1-1 1H9.5v-3.3a1.5 1.5 0 0 0-3 0V14H3.95a1 1 0 0 1-1-1V7.1a1 1 0 0 1 .38-.78L8 2.3Z" fill="currentColor"/></svg>',
+  inbox: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .8a4.7 4.7 0 0 0-4.7 4.7v2.3c0 .5-.16 1-.46 1.4l-.9 1.2A1.2 1.2 0 0 0 2.9 12.2h2.3a2.85 2.85 0 0 0 5.6 0h2.3a1.2 1.2 0 0 0 .96-1.9l-.9-1.2a2.35 2.35 0 0 1-.46-1.4V5.5A4.7 4.7 0 0 0 8 .8Zm0 1.2a3.5 3.5 0 0 1 3.5 3.5v2.3c0 .77.25 1.5.7 2.12l.6.78H3.2l.6-.78c.45-.61.7-1.35.7-2.12V5.5A3.5 3.5 0 0 1 8 2Zm0 12a1.65 1.65 0 0 1-1.55-1.1h3.1A1.65 1.65 0 0 1 8 14Z" fill="currentColor"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 .8a7.2 7.2 0 1 0 0 14.4A7.2 7.2 0 0 0 8 .8Zm0 1.2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm3.06 3.63a.6.6 0 0 0-.46.22L7.3 9.72 5.86 8.28a.6.6 0 1 0-.85.85l1.9 1.9a.6.6 0 0 0 .89-.05l3.7-4.44a.6.6 0 0 0-.44-1.01Z" fill="currentColor"/></svg>',
+  /* ── App-identity icons ────────────────────────────────────────────
+     For naming an app, not for typing an object. Drawn in the outlined
+     idiom of the reference set (Building + the emoji categories) rather
+     than the filled idiom of the Figma exports — these read as a picker,
+     which is what the reference shows. Sized via .ico-app below. */
+  building: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20.5h18"/><path d="M6 20.5V5.2a1.2 1.2 0 0 1 1.2-1.2h6.6A1.2 1.2 0 0 1 15 5.2v15.3"/><path d="M15 20.5v-8.3h2.8A1.2 1.2 0 0 1 19 13.4v7.1"/><path d="M8.6 8h3.8M8.6 11.5h3.8M8.6 15h3.8"/></svg>',
+  briefcase: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7.5" width="18" height="12.5" rx="2.2"/><path d="M9 7.5V6.2A1.7 1.7 0 0 1 10.7 4.5h2.6A1.7 1.7 0 0 1 15 6.2v1.3"/><path d="M3 12.8h18"/></svg>',
+  smiley: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M8.3 13.4a4.4 4.4 0 0 0 7.4 0"/><circle cx="9.3" cy="10" r=".95" fill="currentColor" stroke="none"/><circle cx="14.7" cy="10" r=".95" fill="currentColor" stroke="none"/></svg>',
+  leaf: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18.9 5.1c1 8.6-4.1 13.3-9.7 13.3-1.7 0-3.1-.6-4-1.7-1.2-1.6-.7-4.1 1.4-6.2C9.8 7.3 13.9 5.5 18.9 5.1Z"/><path d="M3.6 20.4 9.8 14.2"/></svg>',
+  food: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 7.6h11.8v5.9a4.6 4.6 0 0 1-4.6 4.6H9.2a4.6 4.6 0 0 1-4.6-4.6V7.6Z"/><path d="M16.4 9.6h1.9a2.5 2.5 0 0 1 0 5h-1.9"/><path d="M4.6 20.6h11.8"/></svg>',
+  activity: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="9.2" ry="5.9" transform="rotate(-45 12 12)"/><path d="M8.5 15.5 15.5 8.5"/><path d="M9.6 13.2 11.2 14.8M11.2 11.6 12.8 13.2M12.8 10 14.4 11.6"/></svg>',
+  travel: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 16.2v-3.4a2 2 0 0 1 .34-1.12l2.2-3.3A2 2 0 0 1 7.8 7.4h8.4a2 2 0 0 1 1.66.88l2.2 3.3A2 2 0 0 1 20.4 12.8v3.4"/><path d="M3.6 13.2h16.8"/><path d="M12 7.4v5.8"/><circle cx="7.6" cy="16.4" r="1.9"/><circle cx="16.4" cy="16.4" r="1.9"/></svg>',
+  flag: '<svg class="ico-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.6v16.8"/><path d="M6 5.2h11.6a.7.7 0 0 1 .6 1.05l-1.9 3.35 1.9 3.35a.7.7 0 0 1-.6 1.05H6"/></svg>',
+
+  link: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.6 9.4a2.9 2.9 0 0 0 4.1 0l2.1-2.1a2.9 2.9 0 0 0-4.1-4.1l-.8.8"/><path d="M9.4 6.6a2.9 2.9 0 0 0-4.1 0L3.2 8.7a2.9 2.9 0 0 0 4.1 4.1l.8-.8"/></svg>',
+  expand: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/></svg>',
+  collapse: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v10M13 8H6.5M9 4.5 6 8l3 3.5"/></svg>',
+  send: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M4.5 7 8 3.5 11.5 7"/></svg>',
+  filter: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3"/></svg>',
+  plus: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>',
+  x: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>',
+  drag: '<svg viewBox="0 0 16 16" fill="currentColor"><circle cx="6" cy="4" r="1.1"/><circle cx="10" cy="4" r="1.1"/><circle cx="6" cy="8" r="1.1"/><circle cx="10" cy="8" r="1.1"/><circle cx="6" cy="12" r="1.1"/><circle cx="10" cy="12" r="1.1"/></svg>',
+  info: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4" stroke-linecap="round"/><circle cx="8" cy="4.9" r=".8" fill="currentColor" stroke="none"/></svg>',
+  // Portfolio header glyphs. Folder is the exact path from builder-mvp.
+  // No hardcoded width/height: the folder is square, and a fixed 13px inside
+  // a 12px flex box gets squashed on one axis only. Sized by .ico-folder below.
+  folder: '<svg class="ico-folder" viewBox="0 0 16 16" fill="none"><path d="M14 3.5H8.7L7.4 1.6a1.5 1.5 0 0 0-1.2-.6H2A1.5 1.5 0 0 0 .5 2.5v11A1.5 1.5 0 0 0 2 15h12a1.5 1.5 0 0 0 1.5-1.5V5A1.5 1.5 0 0 0 14 3.5Z" fill="currentColor"/></svg>',
+  caret: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg>',
+  star: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 2.1l1.76 3.63 3.99.55-2.9 2.79.71 3.95L8 11.15l-3.56 1.87.71-3.95-2.9-2.79 3.99-.55z"/></svg>',
+  brush: '<svg viewBox="0 0 16 16" fill="none"><path d="M11.9 1.6a2 2 0 0 1 2.83 2.83l-5.4 5.4-2.83-2.83 5.4-5.4Z" fill="currentColor" opacity=".35"/><path d="M5.36 7.72l2.83 2.83-1.2 1.2a3.4 3.4 0 0 1-1.7.93c-.7.16-1.1.3-1.42.62-.36.36-.5.9-.98 1.07-.5.18-1.06-.06-1.3-.53-.22-.44-.1-.9.2-1.28.3-.38.5-.72.6-1.25.13-.63.44-1.2.9-1.65l1.07-1.07Z" fill="currentColor"/></svg>',
+  lock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="7" rx="1.6"/><path d="M5.6 7V5.2a2.4 2.4 0 0 1 4.8 0V7"/></svg>',
+};
+
+/* Object types — colour pair + glyph + human label */
+const TYPES = {
+  // Yellow folder, matching the chip in the portfolio page header — the
+  // sidebar row and the page it opens must read as the same object.
+  portfolio: { label: 'Portfolio', icon: 'folder', bg: 'var(--cz-yellow-orange-bg)', fg: 'var(--cz-yellow-orange-fg)' },
+  project:   { label: 'Project',   icon: 'project',   bg: 'var(--cz-blue-green-bg)', fg: 'var(--cz-blue-green-fg)' },
+  table:     { label: 'Table',     icon: 'table',     bg: 'var(--cz-purple-bg)',     fg: 'var(--cz-purple-fg)' },
+  dashboard: { label: 'Dashboard', icon: 'dashboard', bg: 'var(--cz-yellow-orange-bg)', fg: 'var(--cz-yellow-orange-fg)' },
+  page:      { label: 'Page',      icon: 'page',      bg: 'var(--cz-none-bg)',       fg: 'var(--cz-none-fg)' },
+  team:      { label: 'Team',      icon: 'people',    bg: 'var(--cz-aqua-bg)',       fg: 'var(--cz-aqua-fg)' },
+  goal:      { label: 'Goal',      icon: 'goal',      bg: 'var(--cz-green-bg)',      fg: 'var(--cz-green-fg)' },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OBJECT CATALOG — things that ALREADY EXIST in the workspace. The whole
+   point of the builder is that an app is a curated arrangement of these,
+   not a place where new content is authored.
+   ═══════════════════════════════════════════════════════════════════════ */
+const CATALOG = [
+  // `hue` overrides the portfolio type colour per object — same folder glyph,
+  // its own colour, so four portfolios are tellable apart at a glance.
+  { id:'pf-ops',   type:'portfolio', hue:'yellow-orange', name:'Property Ops', meta:'4 projects · Real Estate' },
+  { id:'pf-mkt',   type:'portfolio', hue:'hot-pink',      name:'Marketing',    meta:'4 projects · Growth' },
+  { id:'pf-legal', type:'portfolio', hue:'indigo',        name:'Legal',        meta:'4 projects · Corporate' },
+  { id:'pf-fac',   type:'portfolio', hue:'blue-green',    name:'Facilities',   meta:'4 projects · Operations' },
+
+  { id:'pj-marlow', type:'project', name:'Marlow Renovation',        meta:'42 tasks · due Nov 14' },
+  { id:'pj-beacon', type:'project', name:'Beacon Hill Takeover',     meta:'67 tasks · due Sep 30' },
+  { id:'pj-sunset', type:'project', name:'Sunset Commons Lease-Up',  meta:'23 tasks · due Dec 1' },
+  { id:'pj-vendor', type:'project', name:'Vendor Onboarding',        meta:'18 tasks · ongoing' },
+
+  /* The five Properties groupings are NOT five tables — they are five tabs of
+     ONE table. A sidebar item deep-links to its tab, so `table` names the
+     object that opens and `tab` says which view lands active. */
+  { id:'tb-prop-all',  type:'table', table:'Properties', tab:'All properties',   name:'All properties',   meta:'Properties table · 8 records' },
+  { id:'tb-prop-take', type:'table', table:'Properties', tab:'Takeovers',        name:'Takeovers',        meta:'Properties table · 2 records' },
+  { id:'tb-prop-new',  type:'table', table:'Properties', tab:'New Developments', name:'New Developments', meta:'Properties table · 2 records' },
+  { id:'tb-prop-stab', type:'table', table:'Properties', tab:'Stabilized',       name:'Stabilized',       meta:'Properties table · 2 records' },
+  { id:'tb-prop-sep',  type:'table', table:'Properties', tab:'Separations',      name:'Separations',      meta:'Properties table · 2 records' },
+
+  { id:'tb-units',  type:'table', table:'Units',       name:'Units',       meta:'698 records' },
+  { id:'tb-vend',   type:'table', table:'Vendors',     name:'Vendors',     meta:'86 records' },
+  { id:'tb-work',   type:'table', table:'Work Orders', name:'Work Orders', meta:'1,204 records' },
+  { id:'tb-lease',  type:'table', table:'Leases',      name:'Leases',      meta:'612 records' },
+  { id:'tb-res',    type:'table', table:'Residents',   name:'Residents',   meta:'1,880 records' },
+
+  // One dashboard per audience. Metas state the real card/chart counts.
+  { id:'db-health',  type:'dashboard', name:'Portfolio Health',      meta:'Leadership · 4 cards, 3 charts' },
+  { id:'db-leasing', type:'dashboard', name:'Leasing & Occupancy',   meta:'Leasing · 4 cards, 3 charts' },
+  { id:'db-ops',     type:'dashboard', name:'Maintenance & Vendors', meta:'Operations · 4 cards, 4 charts' },
+
+  { id:'pg-play',  type:'page', name:'Ops Playbook',      meta:'updated 2d ago' },
+  { id:'pg-onb',   type:'page', name:'Onboarding Guide',  meta:'updated 1w ago' },
+  { id:'pg-sop',   type:'page', name:'Turnover SOP',      meta:'updated 3w ago' },
+
+  { id:'tm-ops',   type:'team', name:'Property Ops',       meta:'34 members' },
+  { id:'tm-mkt',   type:'team', name:'Marketing',          meta:'19 members' },
+  { id:'tm-legal', type:'team', name:'Legal & Compliance', meta:'14 members' },
+  { id:'tm-fac',   type:'team', name:'Facilities',         meta:'18 members' },
+  { id:'tm-hr',    type:'team', name:'HR & People',        meta:'8 members' },
+  { id:'tm-fin',   type:'team', name:'Finance',            meta:'11 members' },
+  { id:'tm-it',    type:'team', name:'IT & Systems',       meta:'7 members' },
+
+  { id:'gl-occ',   type:'goal', name:'95% Occupancy',      meta:'Q4 · on track' },
+  { id:'gl-turn',  type:'goal', name:'Reduce Turn Time',   meta:'Q4 · at risk' },
+];
+const byId = id => CATALOG.find(o => o.id === id);
+
+/* Apps that already exist — the index the Build entry lands on */
+const EXISTING_APPS = [
+  { name:'Facilities Requests', glyph:'activity',     color:'blue-green', status:'live',  meta:'Facilities · 4 sections', by:'Dana Ruiz' },
+  { name:'Vendor Compliance',   glyph:'briefcase',     color:'purple',     status:'live',  meta:'Legal · 3 sections',      by:'Sam Cole' },
+  { name:'Capital Planning',    glyph:'flag', color:'yellow-orange', status:'draft', meta:'Finance · 2 sections', by:'You' },
+];
+
+const GLYPH_CHOICES = ['building','briefcase','smiley','leaf','food','activity','travel','flag'];
+const COLOR_CHOICES = ['indigo','blue','blue-green','aqua','green','yellow-orange','orange','purple','magenta','hot-pink'];
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════════════ */
+const SCREENS = ['workspace','apps','builder','app'];
+let S = {
+  screen: 'workspace',
+  railMode: 'work',
+  published: false,
+  sel: null,          // selected object id in the end-user app / preview
+  bldTab: 'build',
+};
+let CFG = null;       // APP_CONFIG under construction
+
+function freshCfg() {
+  return {
+    name: '', glyph: 'building', color: 'indigo',
+    sections: [],
+    access: {
+      general: 'workspace',           // workspace | invited | public
+      // This list is EDITORS only — who can manage and change the app.
+      // Who can merely open it is decided by `general` above, so a
+      // "Viewer" role here would contradict the section's own title.
+      people: [
+        { name:'Taylor Kim',   role:'You · Property Ops', perm:'Owner',  color:'yellow', init:'TK', owner:true },
+        { name:'Dana Ruiz',    role:'Facilities',         perm:'Editor', color:'blue',   init:'DR' },
+        { name:'Property Ops', role:'Team · 34 members',  perm:'Editor', color:'aqua',   init:'PO', team:true },
+      ],
+    },
+  };
+}
+
+/* ── helpers ─────────────────────────────────────────────────────────── */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cz = (name, part) => `var(--cz-${name}-${part})`;
+
+function avatarHtml(glyph, color, size) {
+  const cls = size === 'sm' ? ' obj-av--sm' : size === 'lg' ? ' obj-av--lg' : '';
+  const box = size === 'sm' ? 'ico--12' : 'ico--16';
+  return `<span class="obj-av${cls}" style="background:${cz(color,'bg')};color:${cz(color,'fg')}">
+    <span class="ico ${box}" style="color:inherit">${IC[glyph] || IC.portfolio}</span></span>`;
+}
+/* Takes the OBJECT, not just its type, so an individual object can override
+   its type's colour with `hue` while keeping the type's glyph — that's how
+   each portfolio gets its own folder colour. */
+function typeAvatar(o, size) {
+  const t = TYPES[o.type];
+  const bg = o.hue ? cz(o.hue, 'bg') : t.bg;
+  const fg = o.hue ? cz(o.hue, 'fg') : t.fg;
+  const cls = size === 'sm' ? ' obj-av--sm' : '';
+  const box = size === 'sm' ? 'ico--12' : 'ico--16';
+  return `<span class="obj-av${cls}" style="background:${bg};color:${fg}">
+    <span class="ico ${box}" style="color:inherit">${IC[t.icon]}</span></span>`;
+}
+
+let toastT = null;
+function toast(msg) {
+  $('#toast-msg').textContent = msg;
+  $('#toast').classList.add('toast--on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => $('#toast').classList.remove('toast--on'), 2600);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROTOTYPE STEP TRAIL
+   ═══════════════════════════════════════════════════════════════════════ */
+const STEP_LABELS = { workspace:'Workspace', apps:'Apps', builder:'Build', app:'End user' };
+function renderSteps() {
+  const idx = SCREENS.indexOf(S.screen);
+  $('#steps').innerHTML = SCREENS.map((s, i) => {
+    const cls = s === S.screen ? 'proto-step--active' : (i < idx ? 'proto-step--done' : '');
+    // Only let the reviewer jump back to a screen the flow has reached
+    const reachable = i <= idx || (s === 'app' && S.published);
+    return `<button class="proto-step ${cls}" data-step="${s}" ${reachable ? '' : 'disabled'}>
+      <span class="proto-step__n">${i + 1}</span>${STEP_LABELS[s]}</button>` +
+      (i < SCREENS.length - 1 ? '<span class="proto-nav__sep">›</span>' : '');
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RAIL
+   ═══════════════════════════════════════════════════════════════════════ */
+const RAIL_MODES = [
+  { key:'work',      label:'Work',      icon:'work' },
+  { key:'agents',    label:'Agents',    icon:'agents' },
+  { key:'strategy',  label:'Strategy',  icon:'strategy' },
+  { key:'knowledge', label:'Knowledge', icon:'knowledge' },
+  { key:'people',    label:'People',    icon:'people' },
+];
+
+/* `opts.appEntry` adds the published app above the Build tool.
+   `opts.nudge` pulses the Build entry so reviewers find it. */
+function railHtml(opts) {
+  opts = opts || {};
+  const modes = RAIL_MODES.map(m => `
+    <button class="rail__mode ${S.railMode === m.key && !opts.appActive ? 'rail__mode--active' : ''}" data-rail="${m.key}">
+      <span class="rail__mode-icon">${IC[m.icon]}</span>
+      <span class="rail__mode-label">${m.label}</span>
+    </button>`).join('');
+
+  const appEntry = opts.appEntry ? `
+    <button class="rail__mode ${opts.appActive ? 'rail__mode--active' : ''}" data-rail="app">
+      <span class="rail__mode-icon" style="color:${cz(CFG.color,'fg')};background:${cz(CFG.color,'bg')}">
+        <span class="ico ico--16" style="color:inherit">${IC[CFG.glyph]}</span>
+      </span>
+      <span class="rail__mode-label">${esc(CFG.name.split(' ')[0])}</span>
+    </button>` : '';
+
+  const build = opts.hideBuild ? '' : `
+    <div class="rail__build">
+      <button class="rail__mode rail__mode--build ${opts.nudge ? 'rail__mode--nudge' : ''}" data-rail="build" title="Build an app">
+        <span class="rail__mode-icon">${IC.build}</span>
+        <span class="rail__mode-label">Build</span>
+      </button>
+    </div>`;
+
+  return `<div class="rail__modes">${modes}${appEntry}</div>
+    <div class="rail__actions">
+      ${build}
+      <button class="icon-btn" aria-label="Help">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.2"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.7 1.7c-.5.3-.9.7-.9 1.3" stroke-linecap="round"/><circle cx="8" cy="11.4" r=".75" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <span class="avatar-28">TK</span>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCREEN 1 — WORKSPACE
+   ═══════════════════════════════════════════════════════════════════════ */
+/* Each rail mode owns its own sidebar. Tables belongs to KNOWLEDGE, not
+   Work — putting it under Work misrepresents Asana's information
+   architecture. Rows here are inert; the prototype's job is to show where
+   things live, not to make the whole workspace navigable. */
+function modeSidebarHtml() {
+  if (S.railMode === 'knowledge') {
+    return `
+      <div class="sb__section">Knowledge</div>
+      <div class="sb__group">
+        <div class="sb__row"><span class="ico ico--16">${IC.page}</span><span class="sb__row-label">Pages</span></div>
+        <div class="sb__row"><span class="ico ico--16">${IC.calendar}</span><span class="sb__row-label">Meetings</span></div>
+        <div class="sb__row"><span class="ico ico--16">${IC.table}</span><span class="sb__row-label">Tables</span><span class="sb__row-count">6</span></div>
+      </div>`;
+  }
+  if (S.railMode !== 'work') return `<div class="sb__section">${RAIL_MODES.find(m => m.key === S.railMode).label}</div>`;
+
+  return `
+    <div class="sb__group" style="padding-top:var(--spacing-4)">
+      <div class="sb__row"><span class="ico ico--16">${IC.home}</span><span class="sb__row-label">Home</span></div>
+      <div class="sb__row"><span class="ico ico--16">${IC.inbox}</span><span class="sb__row-label">Inbox</span></div>
+    </div>
+    <div class="sb__group" style="padding-top:var(--spacing-8)">
+      <div class="sb__row sb__row--active"><span class="ico ico--16">${IC.check}</span><span class="sb__row-label">My tasks</span></div>
+      <div class="sb__row"><span class="ico ico--16">${IC.project}</span><span class="sb__row-label">Projects</span></div>
+      <div class="sb__row"><span class="ico ico--16">${IC.portfolio}</span><span class="sb__row-label">Portfolios</span><span class="sb__row-count">4</span></div>
+    </div>
+    <div class="sb__section">Starred</div>
+    <div class="sb__group">
+      ${CATALOG.filter(o => o.type === 'project').map(o => `
+        <div class="sb__row"><span class="ico ico--16">${IC.project}</span><span class="sb__row-label">${esc(o.name)}</span></div>`).join('')}
+    </div>`;
+}
+
+function renderWorkspace() {
+  $('#rail').innerHTML = railHtml({ nudge: true, appEntry: S.published, appActive: false });
+  $('#sidebar').innerHTML = modeSidebarHtml();
+
+  // Only Work has a built-out canvas; other modes say so rather than
+  // showing invented content.
+  if (S.railMode !== 'work') {
+    const label = RAIL_MODES.find(m => m.key === S.railMode).label;
+    $('#canvas').innerHTML = `
+      <div class="empty">
+        <span class="empty__art">${IC[RAIL_MODES.find(m => m.key === S.railMode).icon]}</span>
+        <span class="empty__title">${label} isn't part of this prototype</span>
+        <span class="empty__sub">It's here so the rail is complete. Go back to
+        <strong>Work</strong>, then use <strong>Build</strong> at the bottom of the rail.</span>
+      </div>`;
+    return;
+  }
+
+  $('#canvas').innerHTML = `
+    <div class="cv__head">
+      <div class="cv__title-row"><span class="cv__title">My tasks</span></div>
+      <span class="cv__sub">Tuesday, August 19</span>
+    </div>
+    <div class="cv__body">
+      <div class="banner" style="margin-bottom:16px">
+        ${IC.info}
+        <span><strong>This prototype starts here.</strong> The <strong>Build</strong> entry is at the bottom-left of the icon rail — click it to see your apps and create a new one.</span>
+      </div>
+      <div class="tasklist">
+        ${[['Approve Marlow vendor bids','Today','done'],
+           ['Review Beacon Hill takeover checklist','Today',''],
+           ['Sign off Q4 occupancy targets','Tomorrow',''],
+           ['Walk Sunset Commons units 12–18','Thu',''],
+           ['Renew elevator service contract','Aug 26','']]
+          .map(([n,d,st]) => `
+          <div class="task ${st === 'done' ? 'task--done' : ''}">
+            <span class="check"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 8.4l3 3 5.8-6"/></svg></span>
+            <span class="task__name">${esc(n)}</span><span class="task__meta">${d}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCREEN 2 — APPS INDEX
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderApps() {
+  $('#rail').innerHTML = railHtml({ appEntry: S.published });
+  $$('#rail [data-rail="build"]').forEach(b => b.classList.add('rail__mode--active'));
+
+  $('#sidebar').innerHTML = `
+    <div class="sb__section">Build</div>
+    <div class="sb__group">
+      <div class="sb__row sb__row--active"><span class="ico ico--16">${IC.build}</span><span class="sb__row-label">Apps</span><span class="sb__row-count">${EXISTING_APPS.length + (CFG && CFG.name ? 1 : 0)}</span></div>
+    </div>`;
+
+  // The app appears here once created — as a Draft until published, and it
+  // stays listed after unpublishing rather than vanishing.
+  const mine = (CFG && CFG.name) ? [{
+    name: CFG.name, glyph: CFG.glyph, color: CFG.color,
+    status: S.published ? 'live' : 'draft',
+    meta: `${CFG.sections.length} section${CFG.sections.length === 1 ? '' : 's'} · ${CFG.sections.reduce((n,s)=>n+s.items.length,0)} objects`,
+    by: 'You', isMine: true,
+  }] : [];
+
+  $('#canvas').innerHTML = `
+    <div class="cv__head">
+      <div class="cv__title-row">
+        <span class="cv__title">Apps</span>
+        <span class="cv__head-actions"><button class="btn btn--primary btn--sm" id="new-app">${IC.plus}Create new app</button></span>
+      </div>
+      <span class="cv__sub">Apps arrange the objects you already have into a purpose-built workspace.</span>
+    </div>
+    <div class="cv__body">
+      <div class="apps-grid">
+        <button class="app-card app-card--new" id="new-app-card">
+          <span class="obj-av obj-av--lg"><span class="ico ico--16" style="color:inherit">${IC.plus}</span></span>
+          <span class="app-card--new__label">Create new app</span>
+          <span class="app-card__meta">Start from a blank app</span>
+        </button>
+        ${mine.concat(EXISTING_APPS).map(a => `
+          <div class="app-card" ${a.isMine ? 'data-edit-app="1" title="Open in the editor"' : `data-sample="${esc(a.name)}"`}>
+            <div class="app-card__top">
+              ${avatarHtml(a.glyph, a.color)}
+              <span class="app-card__name">${esc(a.name)}</span>
+            </div>
+            <span class="app-card__meta">${esc(a.meta)}</span>
+            <div class="app-card__foot">
+              <span class="pill pill--${a.status === 'live' ? 'live' : 'draft'}">${a.status === 'live' ? 'Live' : 'Draft'}</span>
+              <span class="app-card__meta">${esc(a.by)}</span>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NAME MODAL
+   ═══════════════════════════════════════════════════════════════════════ */
+function openModal() {
+  CFG = freshCfg();
+  $('#app-name').value = '';
+  paintModal();
+  $('#scrim').classList.add('scrim--on');
+  setTimeout(() => $('#app-name').focus(), 40);
+}
+function paintModal() {
+  $('#modal-av').outerHTML = avatarHtml(CFG.glyph, CFG.color).replace('class="obj-av"', 'class="obj-av" id="modal-av"');
+  $('#glyphs').innerHTML = GLYPH_CHOICES.map(g => `
+    <button class="glyph ${g === CFG.glyph ? 'glyph--on' : ''}" data-glyph="${g}" aria-label="${g}">
+      <span class="ico ico--16" style="color:inherit">${IC[g]}</span></button>`).join('');
+  $('#swatches').innerHTML = COLOR_CHOICES.map(c => `
+    <button class="swatch ${c === CFG.color ? 'swatch--on' : ''}" data-color="${c}"
+      style="background:${cz(c,'bg')}" aria-label="${c}"></button>`).join('');
+  const ok = $('#app-name').value.trim().length > 0;
+  $('#modal-create').disabled = !ok;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCREEN 3 — BUILDER
+   ═══════════════════════════════════════════════════════════════════════ */
+function openBuilder() {
+  S.screen = 'builder';
+  S.bldTab = 'build';
+  S.sel = null;
+  $('#builder').classList.add('builder--on');
+  paintBuilder();
+  renderSteps();
+}
+
+function paintBuilder() {
+  $('#bld-name').textContent = CFG.name;
+  $('#bld-av').outerHTML = avatarHtml(CFG.glyph, CFG.color, 'sm').replace('class="obj-av obj-av--sm"', 'class="obj-av obj-av--sm" id="bld-av"');
+  $('#bld-badge').textContent = S.published ? 'Live' : 'Draft';
+
+  // tabs
+  $$('.segmented__btn').forEach(t => t.classList.toggle('segmented__btn--active', t.dataset.bt === S.bldTab));
+  $$('.bld__pane').forEach(p => p.classList.toggle('bld__pane--on', p.dataset.bp === S.bldTab));
+
+  const count = CFG.sections.reduce((n, s) => n + s.items.length, 0);
+  $('#bld-publish').disabled = count === 0;
+  // Re-editing a live app isn't a first publish
+  $('#bld-publish').textContent = S.published ? 'Publish changes' : 'Publish app';
+  $('#bld-hint').textContent = CFG.sections.length === 0
+    ? 'Add a section to begin'
+    : count === 0
+      ? 'Now add objects into your section'
+      : `${CFG.sections.length} section${CFG.sections.length === 1 ? '' : 's'} · ${count} object${count === 1 ? '' : 's'}`;
+
+  renderPreview();
+  renderSettings();
+}
+
+/* The Build tab's preview: a real app shell whose sidebar is editable */
+function renderPreview() {
+  $('#pv-rail').innerHTML = railHtml({ appEntry: true, appActive: true, hideBuild: true });
+
+  const secs = CFG.sections.map((sec, si) => `
+    <div class="sec" data-si="${si}">
+      <div class="sec__head">
+        <input class="sec__name" value="${esc(sec.name)}" data-secname="${si}"
+               aria-label="Section name" spellcheck="false">
+        <span class="sec__tools">
+          <button class="icon-btn icon-btn--sm sec__grip" data-sec-drag="${si}" draggable="true"
+                  title="Drag to reorder section" aria-label="Reorder section">${IC.drag}</button>
+          <button class="icon-btn icon-btn--sm" data-addobj="${si}" title="Add object">${IC.plus}</button>
+          <button class="icon-btn icon-btn--sm" data-delsec="${si}" title="Remove section">${IC.x}</button>
+        </span>
+      </div>
+      <div class="sec__items" data-items="${si}">
+        ${sec.items.map((it, ii) => {
+          const o = byId(it);
+          return `<div class="sec__item ${S.sel === it ? 'sec__item--sel' : ''}" draggable="true"
+                       data-si="${si}" data-ii="${ii}" data-obj="${it}">
+            ${typeAvatar(o, 'sm')}
+            <span class="sec__item-label">${esc(o.name)}</span>
+            <button class="icon-btn icon-btn--sm sec__item-x" data-delobj="${si}:${ii}" title="Remove">${IC.x}</button>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="sec__add" data-addobj="${si}">${IC.plus}Add object</button>
+    </div>`).join('');
+
+  const blank = CFG.sections.length === 0 ? `
+    <div class="sb__blank">
+      <strong>This is your app's sidebar.</strong><br>
+      Add a section to group things, then pull in projects, tables and
+      portfolios that already exist in your workspace.
+    </div>` : '';
+
+  $('#pv-sidebar').innerHTML = `
+    <div class="sb__section">${esc(CFG.name)}</div>
+    ${blank}${secs}
+    <button class="sb__addsection" id="add-section">${IC.plus}Add section</button>`;
+
+  // Canvas shows whatever is selected, else an empty state
+  $('#pv-canvas').innerHTML = S.sel ? objectHtml(byId(S.sel), true) : `
+    <div class="empty">
+      <span class="empty__art">${IC.build}</span>
+      <span class="empty__title">${CFG.sections.length ? 'Select an object to preview it' : 'Nothing in this app yet'}</span>
+      <span class="empty__sub">${CFG.sections.length
+        ? 'Click any object in the sidebar to see what your users will see.'
+        : 'Objects you add to the sidebar will render here exactly as your users will see them.'}</span>
+    </div>`;
+}
+
+/* ── Settings tab — access control ───────────────────────────────────── */
+const GENERAL_OPTS = [
+  { key:'workspace', title:'Everyone at Northline', sub:'Anyone in the workspace can find and open this app.' },
+  { key:'invited',   title:'Only people I invite', sub:'The app is hidden from everyone else in the workspace.' },
+  { key:'public',    title:'Anyone with the link', sub:'Includes guests outside the workspace. Use with care.' },
+];
+function renderSettings() {
+  const a = CFG.access;
+  $('#set-col').innerHTML = `
+    <div>
+      <div class="set__card">
+        <div class="set__cardhead">
+          <div class="set__cardtitle">General access</div>
+          <div class="set__cardsub">Who can find and open ${esc(CFG.name || 'this app')}.</div>
+        </div>
+        ${GENERAL_OPTS.map(o => `
+          <div class="opt-row ${a.general === o.key ? 'opt-row--on' : ''}" data-gen="${o.key}">
+            <span class="radio"></span>
+            <span>
+              <div class="opt-row__title">${o.title}</div>
+              <div class="opt-row__sub">${o.sub}</div>
+            </span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div>
+      <div class="set__card">
+        <div class="set__cardhead">
+          <div class="set__cardtitle">App editors</div>
+          <div class="set__cardsub">People who can manage and edit the app.</div>
+        </div>
+        ${a.people.map((p, i) => `
+          <div class="acc-row">
+            <span class="avatar" style="background:${cz(p.color,'bg')};color:${cz(p.color,'fg')}">${p.team ? `<span class="ico ico--12" style="color:inherit">${IC.people}</span>` : esc(p.init)}</span>
+            <span class="acc-row__body">
+              <div class="acc-row__name">${esc(p.name)}</div>
+              <div class="acc-row__meta">${esc(p.role)}</div>
+            </span>
+            ${p.owner
+              ? '<span class="acc-row__meta">Owner</span>'
+              : `<select class="select" data-perm="${i}">
+                   ${['Editor','Remove'].map(v => `<option ${p.perm === v ? 'selected' : ''}>${v}</option>`).join('')}
+                 </select>`}
+          </div>`).join('')}
+        <div class="acc-row">
+          <span class="avatar" style="background:var(--avatar-tertiary-background);color:var(--avatar-tertiary-icon)">
+            <span class="ico ico--12" style="color:inherit">${IC.plus}</span></span>
+          <span class="acc-row__body"><div class="acc-row__meta">Add people or teams…</div></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="banner">
+      ${IC.lock}
+      <span>Objects keep their own permissions. Adding a table to this app does
+      <strong>not</strong> grant access to it — people who lack access simply won't see that row.</span>
+    </div>
+
+    <div>
+      <div class="set__card">
+        <div class="set__cardhead">
+          <div class="set__cardtitle">App status</div>
+          <div class="set__cardsub">${S.published
+            ? 'This app is live. People with access can find it and open it from their sidebar.'
+            : 'This app is a draft. Only you can see it until you publish.'}</div>
+        </div>
+        <div class="acc-row">
+          <span class="pill pill--${S.published ? 'live' : 'draft'}">${S.published ? 'Live' : 'Draft'}</span>
+          <span class="acc-row__body">
+            <div class="acc-row__meta">${S.published
+              ? 'Unpublishing removes it from everyone\'s sidebar. Nothing you built is deleted — you can publish again any time.'
+              : 'Use Publish app in the top right when you\'re ready.'}</div>
+          </span>
+          ${S.published ? '<button class="btn btn--danger btn--sm" id="unpublish">Unpublish</button>' : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TYPEAHEAD
+   ═══════════════════════════════════════════════════════════════════════ */
+let taSi = null, taCursor = 0, taResults = [];
+function openTA(si, anchor) {
+  taSi = si; taCursor = 0;
+  $('#ta-input').value = '';
+  paintTA();
+  const ta = $('#ta');
+  ta.classList.add('ta--on');
+  const r = anchor.getBoundingClientRect();
+  // Keep the popover on-screen
+  const top = Math.min(r.bottom + 6, window.innerHeight - ta.offsetHeight - 12);
+  const left = Math.min(r.left, window.innerWidth - 340);
+  ta.style.top = Math.max(12, top) + 'px';
+  ta.style.left = Math.max(12, left) + 'px';
+  setTimeout(() => $('#ta-input').focus(), 20);
+}
+function closeTA() { $('#ta').classList.remove('ta--on'); taSi = null; }
+
+const usedIds = () => CFG.sections.flatMap(s => s.items);
+
+function paintTA() {
+  const q = $('#ta-input').value.trim().toLowerCase();
+  const used = usedIds();
+  taResults = CATALOG
+    .filter(o => !q || o.name.toLowerCase().includes(q) || TYPES[o.type].label.toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (!q) return 0;
+      // Prefix matches first — feels like Asana's picker
+      const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+      const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+      return ap - bp;
+    });
+  if (taCursor >= taResults.length) taCursor = Math.max(0, taResults.length - 1);
+
+  if (!taResults.length) {
+    $('#ta-list').innerHTML = `<div class="ta__empty">No objects match “${esc(q)}”.</div>`;
+    return;
+  }
+  // group by type, preserving TYPES order
+  const order = Object.keys(TYPES);
+  const groups = order.map(t => [t, taResults.filter(o => o.type === t)]).filter(([, v]) => v.length);
+  let n = -1;
+  $('#ta-list').innerHTML = groups.map(([t, items]) => `
+    <div class="ta__group">${TYPES[t].label}s</div>
+    ${items.map(o => {
+      n++;
+      const isUsed = used.includes(o.id);
+      return `<div class="ta__opt ${n === taCursor ? 'ta__opt--cursor' : ''} ${isUsed ? 'ta__opt--dis' : ''}"
+                   data-pick="${o.id}" data-n="${n}">
+        ${typeAvatar(o, 'sm')}
+        <span class="ta__opt-body">
+          <div class="ta__opt-name">${mark(o.name, q)}</div>
+          <div class="ta__opt-meta">${esc(o.meta)}</div>
+        </span>
+        ${isUsed ? '<span class="ta__opt-added">Added</span>' : ''}
+      </div>`;
+    }).join('')}`).join('');
+}
+function mark(name, q) {
+  if (!q) return esc(name);
+  const i = name.toLowerCase().indexOf(q);
+  if (i < 0) return esc(name);
+  return esc(name.slice(0, i)) + '<span class="hl">' + esc(name.slice(i, i + q.length)) + '</span>' + esc(name.slice(i + q.length));
+}
+function pick(id) {
+  if (taSi == null) return;
+  const sec = CFG.sections[taSi];
+  if (sec.items.includes(id)) { toast(`${byId(id).name} is already in this app`); return; }
+  sec.items.push(id);
+  S.sel = id;
+  closeTA();
+  paintBuilder();
+  toast(`Added ${byId(id).name}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   OBJECT CONTENT — what each type renders as
+   ═══════════════════════════════════════════════════════════════════════ */
+/* ── The Properties table ──────────────────────────────────────────────
+   One record set. The groupings filter it by Status; "All properties" is
+   the unfiltered view. Locked rows are confidential, as in Northline. */
+const PROPERTY_RECORDS = [
+  { name:'The Marlow',             loc:'Oakland, CA',    units:84,  status:'Takeover',        occ:'68%', addr:'1725 Broadway, Oakland, CA 94612', year:2024, mgr:['JW','aqua'] },
+  { name:'Beacon Hill Apartments', loc:'Sacramento, CA', units:156, status:'Stabilized',      occ:'96%', addr:'4800 Stockton Blvd, Sacramento, CA 95820', year:2019, mgr:['SC','magenta'], locked:true },
+  { name:'Sunset Commons',         loc:'San Jose, CA',   units:42,  status:'Takeover',        occ:'52%', addr:'200 Park Ave, San Jose, CA 95113', year:2023, mgr:['JW','aqua'] },
+  { name:'Riverside Lofts',        loc:'Portland, OR',   units:98,  status:'Stabilized',      occ:'94%', addr:'915 SE Water Ave, Portland, OR 97214', year:2017, mgr:['JW','aqua'] },
+  { name:'The Hollis',             loc:'Denver, CO',     units:120, status:'New Development', occ:'0%',  addr:'1400 Wewatta St, Denver, CO 80202', year:2026, mgr:['MR','indigo'], locked:true },
+  { name:'North Park Residences',  loc:'Austin, TX',     units:68,  status:'New Development', occ:'74%', addr:'600 Congress Ave, Austin, TX 78701', year:2025, mgr:['PP','yellow-orange'] },
+  { name:'Ivy & Vine',             loc:'Seattle, WA',    units:54,  status:'Separation',      occ:'61%', addr:'2201 Westlake Ave, Seattle, WA 98121', year:2015, mgr:['JW','aqua'] },
+  { name:'Riverbend Flats',        loc:'Boston, MA',     units:76,  status:'Separation',      occ:'63%', addr:'88 Seaport Blvd, Boston, MA 02210', year:2016, mgr:['PP','yellow-orange'] },
+
+  // ── Stabilized: the bulk of a mature portfolio ──
+  { name:'Halstead Row',         loc:'Chicago, IL',        units:142, status:'Stabilized', occ:'97%', addr:'1130 W Monroe St, Chicago, IL 60607', year:2018, mgr:['SC','magenta'] },
+  { name:'Camden Yard Lofts',    loc:'Atlanta, GA',        units:118, status:'Stabilized', occ:'93%', addr:'675 Ponce De Leon Ave NE, Atlanta, GA 30308', year:2020, mgr:['HM','pink'] },
+  { name:'Willow Creek',         loc:'Nashville, TN',      units:96,  status:'Stabilized', occ:'95%', addr:'1200 Division St, Nashville, TN 37203', year:2021, mgr:['DK','blue-green'] },
+  { name:'Brickline Apartments', loc:'Charlotte, NC',      units:164, status:'Stabilized', occ:'91%', addr:'300 S Tryon St, Charlotte, NC 28202', year:2019, mgr:['SC','magenta'] },
+  { name:'Lakeshore Terrace',    loc:'Minneapolis, MN',    units:88,  status:'Stabilized', occ:'94%', addr:'700 Washington Ave N, Minneapolis, MN 55401', year:2014, mgr:['MR','indigo'] },
+  { name:'Presidio Commons',     loc:'San Diego, CA',      units:132, status:'Stabilized', occ:'96%', addr:'1250 Kettner Blvd, San Diego, CA 92101', year:2022, mgr:['JW','aqua'] },
+  { name:'Oakmont Flats',        loc:'Raleigh, NC',        units:74,  status:'Stabilized', occ:'92%', addr:'410 Glenwood Ave, Raleigh, NC 27603', year:2018, mgr:['DK','blue-green'] },
+  { name:'Grandview Heights',    loc:'Columbus, OH',       units:110, status:'Stabilized', occ:'90%', addr:'1000 W Broad St, Columbus, OH 43222', year:2013, mgr:['PP','yellow-orange'] },
+  { name:'Verde Springs',        loc:'Phoenix, AZ',        units:126, status:'Stabilized', occ:'93%', addr:'2201 E Camelback Rd, Phoenix, AZ 85016', year:2021, mgr:['HM','pink'] },
+
+  // ── Takeover: newly acquired, still climbing ──
+  { name:'Fairmount Place',      loc:'Dallas, TX',         units:158, status:'Takeover',   occ:'61%', addr:'2440 Victory Park Ln, Dallas, TX 75219', year:2016, mgr:['PP','yellow-orange'], locked:true },
+  { name:'Cedar & Vine',         loc:'Tampa, FL',          units:92,  status:'Takeover',   occ:'58%', addr:'1001 Water St, Tampa, FL 33602', year:2020, mgr:['JW','aqua'] },
+  { name:'Stonegate Manor',      loc:'Kansas City, MO',    units:104, status:'Takeover',   occ:'66%', addr:'4750 Broadway Blvd, Kansas City, MO 64112', year:2012, mgr:['MR','indigo'] },
+  { name:'Harborview Flats',     loc:'Seattle, WA',        units:136, status:'Takeover',   occ:'71%', addr:'590 1st Ave S, Seattle, WA 98104', year:2019, mgr:['DK','blue-green'] },
+  { name:'Alder Court',          loc:'Richmond, VA',       units:68,  status:'Takeover',   occ:'54%', addr:'820 E Main St, Richmond, VA 23219', year:2011, mgr:['SC','magenta'] },
+
+  // ── New Development: pre-lease or just delivered ──
+  { name:'Meridian Yards',       loc:'Salt Lake City, UT', units:148, status:'New Development', occ:'0%',  addr:'111 S Main St, Salt Lake City, UT 84111', year:2026, mgr:['MR','indigo'] },
+  { name:'The Ashford',          loc:'Austin, TX',         units:112, status:'New Development', occ:'12%', addr:'1400 E 6th St, Austin, TX 78702', year:2026, mgr:['PP','yellow-orange'], locked:true },
+  { name:'Larkspur Landing',     loc:'Denver, CO',         units:96,  status:'New Development', occ:'0%',  addr:'3000 Brighton Blvd, Denver, CO 80216', year:2027, mgr:['HM','pink'] },
+
+  // ── Separation: exiting management ──
+  { name:'Pinehurst Court',      loc:'Atlanta, GA',        units:82,  status:'Separation', occ:'47%', addr:'1050 Memorial Dr SE, Atlanta, GA 30316', year:2009, mgr:['SC','magenta'] },
+  { name:'Bayside Crossing',     loc:'Tampa, FL',          units:90,  status:'Separation', occ:'52%', addr:'4200 Bayshore Blvd, Tampa, FL 33611', year:2010, mgr:['JW','aqua'] },
+  { name:'Elm Street Commons',   loc:'Columbus, OH',       units:64,  status:'Separation', occ:'44%', addr:'250 S High St, Columbus, OH 43215', year:2008, mgr:['DK','blue-green'] },
+];
+
+/* Work orders, vendors and leases live outside TABLE_DEFS because the
+   dashboards derive their charts from the same arrays the tables render.
+   One source per fact, so a chart can never disagree with its table. */
+const WORK_ORDERS = [
+  { id:'WO-1042', prop:'The Marlow',             issue:'HVAC unit 12A',       pri:'High',   who:['MR','indigo'],        opened:'Aug 18', age:2  },
+  { id:'WO-1041', prop:'Riverside Lofts',        issue:'Roof leak',           pri:'Urgent', who:['MR','indigo'],        opened:'Aug 17', age:3  },
+  { id:'WO-1039', prop:'Sunset Commons',         issue:'Lobby lighting',      pri:'Low',    who:['PP','yellow-orange'], opened:'Aug 15', age:5  },
+  { id:'WO-1038', prop:'The Marlow',             issue:'Elevator inspection', pri:'High',   who:['MR','indigo'],        opened:'Aug 14', age:6  },
+  { id:'WO-1035', prop:'Beacon Hill Apartments', issue:'Unit 4C repaint',     pri:'Low',    who:['SC','magenta'],       opened:'Aug 12', age:8  },
+  { id:'WO-1033', prop:'Riverbend Flats',        issue:'Parking gate',        pri:'High',   who:['PP','yellow-orange'], opened:'Aug 11', age:9  },
+  { id:'WO-1030', prop:'The Marlow',             issue:'Water heater',        pri:'Urgent', who:['MR','indigo'],        opened:'Aug 8',  age:12 },
+  { id:'WO-1028', prop:'Ivy & Vine',             issue:'Window seals',        pri:'Low',    who:['JW','aqua'],          opened:'Aug 6',  age:14 },
+  { id:'WO-1025', prop:'Riverside Lofts',        issue:'Boiler service',      pri:'High',   who:['MR','indigo'],        opened:'Aug 4',  age:16 },
+  { id:'WO-1019', prop:'North Park Residences',  issue:'Fire panel test',     pri:'Low',    who:['PP','yellow-orange'], opened:'Jul 29', age:22 },
+];
+
+const VENDORS = [
+  { name:'Bayview Plumbing',      cat:'Plumbing',   contact:'Ana Reyes',  amt:84000,  status:'Active'   },
+  { name:'Summit Elevator',       cat:'Elevators',  contact:'Cole Tran',  amt:210000, status:'Active'   },
+  { name:'GreenLeaf Landscaping', cat:'Grounds',    contact:'Mia Duarte', amt:46000,  status:'Renewing' },
+  { name:'Harbor HVAC',           cat:'HVAC',       contact:'Dev Shah',   amt:168000, status:'Active'   },
+  { name:'Ironline Roofing',      cat:'Roofing',    contact:'Rae Kim',    amt:132000, status:'Active'   },
+  { name:'Clearview Janitorial',  cat:'Janitorial', contact:'Luis Ortiz', amt:62000,  status:'Active'   },
+];
+
+/* `inDays` is days from the app's "today" (Aug 19), which is what the
+   expiring-soon card counts. */
+const LEASES = [
+  { id:'L-2291', resident:'Dana Whit',    prop:'The Marlow',             term:'12 mo', expires:'Sep 2026', q:'Q3 2026', inDays:26  },
+  { id:'L-2288', resident:'Omar Reyes',   prop:'Beacon Hill Apartments', term:'18 mo', expires:'Oct 2026', q:'Q4 2026', inDays:57  },
+  { id:'L-2280', resident:'Lena Poole',   prop:'Sunset Commons',         term:'12 mo', expires:'Nov 2026', q:'Q4 2026', inDays:88  },
+  { id:'L-2276', resident:'Priya Nair',   prop:'Riverside Lofts',        term:'12 mo', expires:'Dec 2026', q:'Q4 2026', inDays:118 },
+  { id:'L-2271', resident:'Sam Okafor',   prop:'Ivy & Vine',             term:'24 mo', expires:'Jan 2027', q:'Q1 2027', inDays:149 },
+  { id:'L-2265', resident:'Nina Patel',   prop:'Riverbend Flats',        term:'12 mo', expires:'Feb 2027', q:'Q1 2027', inDays:180 },
+  { id:'L-2260', resident:'Theo Brand',   prop:'North Park Residences',  term:'12 mo', expires:'Apr 2027', q:'Q2 2027', inDays:239 },
+  { id:'L-2254', resident:'Ruth Alvarez', prop:'Beacon Hill Apartments', term:'12 mo', expires:'Jun 2027', q:'Q2 2027', inDays:300 },
+];
+
+/* Grouping tab -> the Status it filters on. null = no filter. */
+const GROUPINGS = {
+  'All properties':   null,
+  'Takeovers':        'Takeover',
+  'New Developments': 'New Development',
+  'Stabilized':       'Stabilized',
+  'Separations':      'Separation',
+};
+
+const lockIcon = `<span class="rec-lock" title="Confidential">${IC.lock}</span>`;
+
+const PRI_HUE = { Urgent:'orange', High:'yellow-orange', Low:'none' };
+const money = n => '$' + n.toLocaleString('en-US');
+const pct   = n => n.toFixed(1).replace(/\.0$/, '') + '%';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DERIVED METRICS
+   Every figure below is COMPUTED from the record sets the tables render,
+   so a dashboard can't drift out of sync with the table behind it. The one
+   exception is the 12-month occupancy history, which has no source data —
+   it is illustrative and ends on the derived current value.
+   ═══════════════════════════════════════════════════════════════════════ */
+const M = {
+  properties:  () => PROPERTY_RECORDS.length,
+  units:       () => PROPERTY_RECORDS.reduce((n, r) => n + r.units, 0),
+  occupied:    () => Math.round(PROPERTY_RECORDS.reduce((n, r) => n + r.units * parseFloat(r.occ) / 100, 0)),
+  vacant:      () => M.units() - M.occupied(),
+  // Unit-weighted, not a mean of percentages — a 156-unit building can't
+  // count the same as a 42-unit one.
+  occupancy:   () => (M.occupied() / M.units()) * 100,
+  belowTarget: () => PROPERTY_RECORDS.filter(r => r.status !== 'New Development' && parseFloat(r.occ) < 90).length,
+
+  byLifecycle: () => Object.entries(GROUPINGS).filter(([, f]) => f)
+    .map(([label, f]) => ({ label, value: PROPERTY_RECORDS.filter(r => r.status === f).length })),
+
+  // ASCENDING, and excluding pre-lease new builds. Sorted descending, the
+  // top 10 of 28 are all 91-97% — a flat chart that tells leadership
+  // nothing. The actionable end of this distribution is the bottom.
+  occByProperty: () => PROPERTY_RECORDS
+    .filter(r => r.status !== 'New Development')
+    .map(r => ({ label: r.name, value: parseFloat(r.occ) }))
+    .sort((a, b) => a.value - b.value),
+
+  openByDept: () => Object.entries(PF_VIEWS).map(([id, v]) => ({
+    label: byId(id).name,
+    value: v.rows.reduce((n, r) => n + (r.open || 0), 0),
+    hue: byId(id).hue,
+  })).sort((a, b) => b.value - a.value),
+
+  openWork:   () => Object.values(PF_VIEWS).reduce((n, v) => n + v.rows.reduce((m, r) => m + (r.open || 0), 0), 0),
+  atRiskWork: () => Object.values(PF_VIEWS).reduce((n, v) => n + v.rows.filter(r => r.status).length, 0),
+
+  workOrders:   () => WORK_ORDERS.length,
+  woOverdue:    () => WORK_ORDERS.filter(w => w.age > 10).length,
+  woAvgAge:     () => WORK_ORDERS.reduce((n, w) => n + w.age, 0) / WORK_ORDERS.length,
+  woByProperty: () => tally(WORK_ORDERS, w => w.prop),
+  woByPriority: () => ['Urgent','High','Low'].map(p => ({ label: p, value: WORK_ORDERS.filter(w => w.pri === p).length })),
+  woByAssignee: () => {
+    const g = {};
+    WORK_ORDERS.forEach(w => { const k = w.who[0]; (g[k] = g[k] || { label:k, value:0, hue:w.who[1] }).value++; });
+    return Object.values(g).sort((a, b) => b.value - a.value);
+  },
+
+  vendorSpend:      () => VENDORS.reduce((n, v) => n + v.amt, 0),
+  spendByCategory:  () => VENDORS.map(v => ({ label: v.cat, value: v.amt })).sort((a, b) => b.value - a.value),
+
+  expiringSoon:  () => LEASES.filter(l => l.inDays <= 90).length,
+  leasesByQtr:   () => tally(LEASES, l => l.q),
+  vacantByProp:  () => PROPERTY_RECORDS
+    .map(r => ({ label: r.name, value: Math.round(r.units * (1 - parseFloat(r.occ) / 100)) }))
+    .filter(d => d.value > 0).sort((a, b) => b.value - a.value),
+  stabilized:    () => PROPERTY_RECORDS.filter(r => r.status === 'Stabilized').length,
+
+  // Illustrative history, pinned to the derived current value at the end
+  occTrend: () => {
+    const now = M.occupancy();
+    return [58.2, 59.4, 61.0, 60.3, 62.1, 63.4, 62.8, 64.1, 63.2, 65.0, 64.2, now]
+      .map((v, i) => ({ label: ['Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'][i], value: v }));
+  },
+};
+
+function tally(arr, keyFn) {
+  const g = {};
+  arr.forEach(x => { const k = keyFn(x); g[k] = (g[k] || 0) + 1; });
+  return Object.entries(g).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
+
+/* Per-table columns and rows. Every table renders with the same page chrome
+   as a portfolio; only Properties has more than one view. */
+const TABLE_DEFS = {
+  Properties: {
+    addLabel: 'Add property',
+    tabs: Object.keys(GROUPINGS),
+    cols: [['#',40], ['Property',220], ['Location',150], ['Units',70], ['Status',150], ['Occupancy',100], ['Regional Mgr',120]],
+    rows(tab) {
+      const f = GROUPINGS[tab];
+      const rs = f ? PROPERTY_RECORDS.filter(r => r.status === f) : PROPERTY_RECORDS;
+      return rs.map((r, i) => ({ key: r.name, cells: [
+        `<span class="pfg__n">${i + 1}</span>`,
+        (r.locked ? lockIcon : '') + esc(r.name),
+        pfPill(r.loc, LOC_HUE[r.loc] || 'none'),
+        r.units,
+        pfPill(r.status, STATUS_COLOR[r.status] || 'none'),
+        r.occ,
+        face(r.mgr[0], r.mgr[1]),
+      ] }));
+    },
+  },
+  Units: {
+    addLabel: 'Add unit', tabs: ['All records'],
+    cols: [['Unit',90], ['Property',220], ['Type',110], ['Rent',110], ['Status',130]],
+    rows() { return [
+      ['12A', 'The Marlow',             '2 bed',  '$3,450', pfPill('Occupied','green')],
+      ['4C',  'Beacon Hill Apartments', '1 bed',  '$2,180', pfPill('Vacant','yellow')],
+      ['8B',  'Sunset Commons',         'Studio', '$1,940', pfPill('Occupied','green')],
+    ]; },
+  },
+  Vendors: {
+    addLabel: 'Add vendor', tabs: ['All records'],
+    cols: [['Vendor',220], ['Category',140], ['Contact',150], ['Contract',110], ['Status',130]],
+    rows() { return VENDORS.map(v => [
+      esc(v.name), esc(v.cat), esc(v.contact), money(v.amt),
+      pfPill(v.status, v.status === 'Active' ? 'green' : 'yellow-orange'),
+    ]); },
+  },
+  'Work Orders': {
+    addLabel: 'Add work order', tabs: ['All records'],
+    cols: [['Order',110], ['Property',220], ['Issue',200], ['Priority',120], ['Opened',100]],
+    rows() { return WORK_ORDERS.map(w => [
+      w.id, esc(w.prop), esc(w.issue), pfPill(w.pri, PRI_HUE[w.pri]), w.opened,
+    ]); },
+  },
+  Leases: {
+    addLabel: 'Add lease', tabs: ['All records'],
+    cols: [['Lease',110], ['Resident',160], ['Property',220], ['Term',90], ['Expires',110]],
+    rows() { return LEASES.map(l => [
+      l.id, esc(l.resident), esc(l.prop), l.term, l.expires,
+    ]); },
+  },
+  Residents: {
+    addLabel: 'Add resident', tabs: ['All records'],
+    cols: [['Resident',180], ['Property',220], ['Unit',90], ['Since',90], ['Status',130]],
+    rows() { return [
+      ['Dana Whit',  'The Marlow',             '12A', '2024', pfPill('Current','green')],
+      ['Omar Reyes', 'Beacon Hill Apartments', '4C',  '2023', pfPill('Current','green')],
+      ['Lena Poole', 'Sunset Commons',         '8B',  '2025', pfPill('Notice','yellow-orange')],
+    ]; },
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CHART PRIMITIVES — inline SVG, no libraries.
+   Every chart sits in a .dcard with the Asana footer (filter count left,
+   "See all" right), because that footer is a big part of why an Asana
+   dashboard reads as one.
+   ═══════════════════════════════════════════════════════════════════════ */
+const CHART_HUES = ['blue','indigo','aqua','green','yellow-orange','hot-pink','purple','blue-green','orange','magenta'];
+
+/* Shared so number cards and chart cards pluralise identically */
+const filterLabel = n => !n ? 'No Filters' : n + ' Filter' + (n > 1 ? 's' : '');
+
+function dcard(title, body, filters, wide) {
+  return `<div class="dcard ${wide ? 'dcard--wide' : ''}">
+    <div class="dcard__title">${esc(title)}</div>
+    <div class="dcard__body">${body}</div>
+    <div class="dcard__foot">
+      <span class="dcard__filter">${IC.filter}${filterLabel(filters)}</span>
+      <button class="btn btn--secondary btn--sm">See all</button>
+    </div>
+  </div>`;
+}
+
+/* Big-number card */
+function numCard(title, value, sub, filters) {
+  return `<div class="dcard dcard--num">
+    <div class="dcard__title">${esc(title)}</div>
+    <div class="dnum">${value}</div>
+    ${sub ? `<div class="dnum__sub">${sub}</div>` : ''}
+    <div class="dcard__foot">
+      <span class="dcard__filter">${IC.filter}${filterLabel(filters)}</span>
+    </div>
+  </div>`;
+}
+
+/* Donut with the total in the middle and a legend on the right.
+   Segments are drawn as dash-arrays on one circle, rotated so the first
+   slice starts at 12 o'clock. */
+function donut(data, centerVal, centerLab) {
+  const total = data.reduce((n, d) => n + d.value, 0) || 1;
+  const r = 52, C = 2 * Math.PI * r;
+  let acc = 0;
+  const rings = data.map((d, i) => {
+    const hue = d.hue || CHART_HUES[i % CHART_HUES.length];
+    const len = (d.value / total) * C;
+    const seg = `<circle cx="70" cy="70" r="${r}" fill="none"
+      stroke="${cz(hue,'bg')}" stroke-width="22"
+      stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}"
+      stroke-dashoffset="${(-acc).toFixed(2)}"
+      transform="rotate(-90 70 70)"></circle>`;
+    acc += len;
+    return seg;
+  }).join('');
+
+  const legend = data.map((d, i) => {
+    const hue = d.hue || CHART_HUES[i % CHART_HUES.length];
+    return `<div class="dlegend__row">
+      <span class="dlegend__sw" style="background:${cz(hue,'bg')}"></span>
+      <span class="dlegend__lab">${esc(d.label)}</span>
+      <span class="dlegend__val">${d.value}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="ddonut">
+    <svg viewBox="0 0 140 140" class="ddonut__svg" role="img" aria-label="${esc(centerLab || '')}">
+      ${rings}
+      <text x="70" y="70" class="ddonut__total" text-anchor="middle" dominant-baseline="central">${centerVal}</text>
+    </svg>
+    <div class="dlegend">${legend}</div>
+  </div>`;
+}
+
+/* Vertical bars with value labels above and rotated x labels below */
+function barChart(data, opts) {
+  opts = opts || {};
+  // `top` caps how many bars are drawn; the remainder is reported as
+  // "+ N more", the way Asana's charts do once a dimension gets wide.
+  const rows = opts.top ? data.slice(0, opts.top) : data;
+  const more = data.length - rows.length;
+
+  const max = Math.max(...rows.map(d => d.value), 1);
+  // Rotated -35deg with text-anchor:end, a label's far end lands
+  // width*sin(35) BELOW its anchor. Reserve that space, or .dcard's
+  // overflow:hidden shears the labels diagonally and eats their first
+  // characters — which looks like bad data rather than a clipped box.
+  const drop = Math.ceil(labelChars(rows.length) * 5.4 * 0.574);
+  const W = 560, padT = 24, plotH = 112, padB = 26 + drop, H = padT + plotH + padB, padL = 34;
+  const slot = (W - padL) / rows.length;
+  const bw = Math.min(38, slot * 0.55);
+
+  const bars = rows.map((d, i) => {
+    const h = ((d.value / max) * (H - padT - padB)) || 0;
+    const x = padL + i * slot + (slot - bw) / 2;
+    const y = H - padB - h;
+    const hue = d.hue || opts.hue || 'blue';
+    return `
+      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h,1).toFixed(1)}"
+            rx="3" fill="${cz(hue,'bg')}"></rect>
+      <text x="${(x + bw/2).toFixed(1)}" y="${(y - 7).toFixed(1)}" class="dval" text-anchor="middle">${opts.fmt ? opts.fmt(d.value) : d.value}</text>
+      <text x="${(x + bw/2).toFixed(1)}" y="${H - padB + 14}" class="dlab"
+            text-anchor="end" transform="rotate(-35 ${(x + bw/2).toFixed(1)} ${H - padB + 14})">${esc(trim(d.label, labelChars(rows.length)))}</text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="dchart" role="img">
+    <line x1="${padL}" y1="${H - padB}" x2="${W}" y2="${H - padB}" class="daxis"></line>
+    <text x="${padL - 8}" y="${H - padB}" class="dlab" text-anchor="end" dominant-baseline="middle">0</text>
+    ${bars}
+    ${more > 0 ? `<text x="${W - 2}" y="${H - 5}" class="dmore" text-anchor="end">+ ${more} more</text>` : ''}
+  </svg>`;
+}
+
+/* Lollipop — thin stem, dot on top. Optionally avatars as x labels. */
+function lollipop(data, opts) {
+  opts = opts || {};
+  const max = Math.max(...data.map(d => d.value), 1);
+  // Avatar labels sit upright under the axis, so only rotated text needs
+  // the diagonal allowance (see barChart).
+  const drop = opts.avatars ? 0 : Math.ceil(labelChars(data.length) * 5.4 * 0.574);
+  const W = 560, padT = 24, plotH = 112, padB = opts.avatars ? 46 : 26 + drop,
+        H = padT + plotH + padB, padL = 34;
+  const slot = (W - padL) / data.length;
+
+  const stems = data.map((d, i) => {
+    const h = ((d.value / max) * (H - padT - padB)) || 0;
+    const cx = padL + i * slot + slot / 2;
+    const y = H - padB - h;
+    const hue = d.hue || opts.hue || 'indigo';
+    return `
+      <line x1="${cx.toFixed(1)}" y1="${(H - padB).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${y.toFixed(1)}"
+            stroke="${cz(hue,'bg')}" stroke-width="7" stroke-linecap="round" opacity="0.45"></line>
+      <circle cx="${cx.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${cz(hue,'bg')}"></circle>
+      <text x="${cx.toFixed(1)}" y="${(y - 12).toFixed(1)}" class="dval" text-anchor="middle">${d.value}</text>
+      ${opts.avatars
+        ? `<circle cx="${cx.toFixed(1)}" cy="${H - padB + 18}" r="11" fill="${cz(hue,'bg')}"></circle>
+           <text x="${cx.toFixed(1)}" y="${H - padB + 18}" class="davatar" text-anchor="middle" dominant-baseline="central">${esc(d.label)}</text>`
+        : `<text x="${cx.toFixed(1)}" y="${H - padB + 14}" class="dlab" text-anchor="end"
+                 transform="rotate(-35 ${cx.toFixed(1)} ${H - padB + 14})">${esc(trim(d.label, labelChars(data.length)))}</text>`}`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" class="dchart" role="img">
+    <line x1="${padL}" y1="${H - padB}" x2="${W}" y2="${H - padB}" class="daxis"></line>
+    <text x="${padL - 8}" y="${H - padB}" class="dlab" text-anchor="end" dominant-baseline="middle">0</text>
+    ${stems}
+  </svg>`;
+}
+
+/* Area + line, for the occupancy trend */
+function areaChart(data, opts) {
+  opts = opts || {};
+  const vals = data.map(d => d.value);
+  const min = Math.floor(Math.min(...vals) - 3), max = Math.ceil(Math.max(...vals) + 3);
+  const W = 560, H = 190, padB = 34, padT = 22, padL = 40;
+  const sx = i => padL + (i / (data.length - 1)) * (W - padL - 10);
+  const sy = v => H - padB - ((v - min) / (max - min)) * (H - padT - padB);
+
+  const pts = data.map((d, i) => `${sx(i).toFixed(1)},${sy(d.value).toFixed(1)}`).join(' ');
+  const area = `${padL},${H - padB} ${pts} ${sx(data.length - 1).toFixed(1)},${H - padB}`;
+  const hue = opts.hue || 'blue';
+
+  const gridlines = [min, (min + max) / 2, max].map(v =>
+    `<line x1="${padL}" y1="${sy(v).toFixed(1)}" x2="${W - 10}" y2="${sy(v).toFixed(1)}" class="dgrid"></line>
+     <text x="${padL - 8}" y="${sy(v).toFixed(1)}" class="dlab" text-anchor="end" dominant-baseline="middle">${Math.round(v)}%</text>`).join('');
+
+  const labels = data.map((d, i) =>
+    `<text x="${sx(i).toFixed(1)}" y="${H - padB + 15}" class="dlab" text-anchor="middle">${esc(d.label)}</text>`).join('');
+
+  const last = data[data.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" class="dchart" role="img">
+    ${gridlines}
+    <polygon points="${area}" fill="${cz(hue,'bg')}" opacity="0.16"></polygon>
+    <polyline points="${pts}" fill="none" stroke="${cz(hue,'bg')}" stroke-width="2.5"
+              stroke-linejoin="round" stroke-linecap="round"></polyline>
+    <circle cx="${sx(data.length - 1).toFixed(1)}" cy="${sy(last.value).toFixed(1)}" r="5"
+            fill="${cz(hue,'bg')}" stroke="#fff" stroke-width="2"></circle>
+    <text x="${sx(data.length - 1).toFixed(1)}" y="${(sy(last.value) - 13).toFixed(1)}" class="dval" text-anchor="end">${pct(last.value)}</text>
+    ${labels}
+  </svg>`;
+}
+
+const trim = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+/* Rotated x-labels collide once the slot gets narrow, which reads as
+   clipped text rather than overlap. Budget characters by how many bars
+   share the axis — Asana truncates hard here too. */
+const labelChars = n => Math.max(7, Math.min(16, Math.floor(90 / n) + 3));
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE THREE DASHBOARDS
+   One per audience: leadership, leasing, operations.
+   ═══════════════════════════════════════════════════════════════════════ */
+const DASHBOARDS = {
+  'db-health': {
+    crumb: 'Dashboards / Leadership',
+    cards: () => [
+      numCard('Properties', M.properties(), 'under management'),
+      numCard('Units managed', M.units().toLocaleString(), `${M.occupied().toLocaleString()} occupied`, 1),
+      numCard('Portfolio occupancy', pct(M.occupancy()), 'unit-weighted', 1),
+      numCard('Below 90% target', M.belowTarget(), 'excludes new builds', 2),
+    ],
+    charts: () => [
+      dcard('Total properties by lifecycle', donut(M.byLifecycle(), M.properties(), 'Properties by lifecycle'), 1),
+      dcard('Lowest occupancy by property', barChart(M.occByProperty(), { hue:'blue', top:10, fmt: v => v + '%' }), 1),
+      dcard('Open work by department', lollipop(M.openByDept()), 2, true),
+    ],
+  },
+
+  'db-leasing': {
+    crumb: 'Dashboards / Leasing',
+    cards: () => [
+      numCard('Portfolio occupancy', pct(M.occupancy()), 'unit-weighted', 1),
+      numCard('Vacant units', M.vacant().toLocaleString(), `of ${M.units().toLocaleString()}`, 1),
+      numCard('Leases expiring', M.expiringSoon(), 'in the next 90 days', 2),
+      numCard('Stabilized', M.stabilized(), 'properties at target'),
+    ],
+    charts: () => [
+      dcard('Portfolio occupancy trend', areaChart(M.occTrend(), { hue:'blue-green' }), 1, true),
+      dcard('Vacant units by property', barChart(M.vacantByProp(), { hue:'hot-pink', top:10 }), 1),
+      dcard('Lease expirations by quarter', donut(M.leasesByQtr(), LEASES.length, 'Lease expirations'), 0),
+    ],
+  },
+
+  'db-ops': {
+    crumb: 'Dashboards / Operations',
+    cards: () => [
+      numCard('Open work orders', M.workOrders(), 'across the portfolio'),
+      numCard('Overdue', M.woOverdue(), 'open over 10 days', 1),
+      numCard('Avg open age', M.woAvgAge().toFixed(1) + 'd', 'time since raised', 1),
+      numCard('Vendor spend', money(M.vendorSpend()), 'contracted YTD', 1),
+    ],
+    charts: () => [
+      dcard('Open work orders by property', barChart(M.woByProperty(), { hue:'orange' }), 1),
+      dcard('Work orders by priority', donut(M.woByPriority(), M.workOrders(), 'Work orders by priority'), 1),
+      dcard('Work orders by assignee', lollipop(M.woByAssignee(), { avatars:true }), 2),
+      dcard('Vendor spend by category', barChart(M.spendByCategory(), { hue:'indigo', fmt: v => '$' + Math.round(v/1000) + 'K' }), 1),
+    ],
+  },
+};
+
+/* Same page chrome as portfolios and tables */
+function dashboardHtml(o) {
+  const d = DASHBOARDS[o.id] || DASHBOARDS['db-health'];
+  return `
+    <div class="pf-head pf-head--flush">
+      <div class="pf-head__crumb">${esc(d.crumb)}</div>
+      <div class="pf-head__top">
+        <span class="pf-head__icon" style="background:${TYPES.dashboard.bg};color:${TYPES.dashboard.fg}">
+          <span class="ico ico--16" style="color:inherit">${IC.dashboard}</span></span>
+        <span class="pf-head__name">${esc(o.name)}</span>
+        <button class="icon-btn icon-btn--sm" aria-label="Dashboard menu">${IC.caret}</button>
+        <button class="icon-btn icon-btn--sm" aria-label="Star">${IC.star}</button>
+        <span class="pf-head__actions">
+          <span class="facepile">${PF_FACES.map(([i, h]) => face(i, h)).join('')}</span>
+          <button class="btn btn--secondary btn--sm">Share</button>
+          <span class="pf-head__sep"></span>
+          <button class="icon-btn" aria-label="Customize">${IC.brush}</button>
+        </span>
+      </div>
+    </div>
+    <div class="pf-toolbar">
+      <button class="btn btn--secondary btn--sm">${IC.plus}Add chart</button>
+      <span class="pf-toolbar__right">
+        ${['Filter','Date range','Options'].map(x => `<span class="pf-toolbar__item">${x}</span>`).join('')}
+      </span>
+    </div>
+    <div class="pf-body dash">
+      <div class="dash__nums">${d.cards().join('')}</div>
+      <div class="dash__grid">${d.charts().join('')}</div>
+    </div>`;
+}
+
+/* The catalog is declared before the records exist, so its counts are
+   filled in here instead of hardcoded — a grouping can then never
+   advertise a number it doesn't show. */
+(function syncMetas() {
+  CATALOG.filter(o => o.table === 'Properties').forEach(o => {
+    const f = GROUPINGS[o.tab];
+    const n = f ? PROPERTY_RECORDS.filter(r => r.status === f).length : PROPERTY_RECORDS.length;
+    o.meta = `Properties table \u00b7 ${n} record${n === 1 ? '' : 's'}`;
+  });
+  // One record per unit, so the Units table counts units across properties
+  const u = CATALOG.find(o => o.id === 'tb-units');
+  if (u) u.meta = `${PROPERTY_RECORDS.reduce((n, r) => n + r.units, 0).toLocaleString()} records`;
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECORD PANE — builder-mvp's property pane, driven by PROPERTY_RECORDS.
+   Only The Marlow has a real branding asset; the rest get a genuine empty
+   state rather than a borrowed image, which is also the honest signal that
+   structure is shared but content is per-record.
+   ═══════════════════════════════════════════════════════════════════════ */
+const BRANDING = { 'The Marlow': 'marlow-branding.png' };
+
+function cfRow(label, icon, value) {
+  return `<div class="cf__row">
+    <div class="cf__label"><span class="ico ico--14">${icon}</span>${esc(label)}</div>
+    <div class="cf__divider"></div>
+    <div class="cf__value">${value}</div>
+  </div>`;
+}
+
+function paneHtml(r) {
+  const openWO = WORK_ORDERS.filter(w => w.prop === r.name).length;
+  const brand = BRANDING[r.name];
+
+  const meta = [
+    ['Location', pfPill(r.loc, LOC_HUE[r.loc] || 'none')],
+    ['Status',   pfPill(r.status, STATUS_COLOR[r.status] || 'none')],
+    ['Units',    `<span class="meta-field__pill" style="background:var(--background-strong);color:var(--text)">${r.units}</span>`],
+  ].map(([l, v]) => `<span class="meta-field"><span class="meta-field__label">${l}</span>${v}</span>`).join('');
+
+  const section = (label, icon, body) => `
+    <div class="pn-sec">
+      <div class="pn-sec__title"><span class="ico ico--12">${icon}</span><span class="pn-sec__label">${esc(label)}</span></div>
+      <div class="pn-sec__body">${body}</div>
+    </div>`;
+
+  return `
+    <div class="pane__topbar">
+      <span class="pane__crumb"><span class="ico ico--16">${IC.table}</span>Properties</span>
+      <span class="pane__actions">
+        ${face(r.mgr[0], r.mgr[1])}
+        <button class="icon-btn" aria-label="Add follower">${IC.plus}</button>
+        <button class="btn btn--secondary btn--sm">Share</button>
+        <span class="pane__sep"></span>
+        <button class="icon-btn" aria-label="Copy link">${IC.link}</button>
+        <button class="icon-btn" aria-label="Expand">${IC.expand}</button>
+        <button class="icon-btn" aria-label="Customize">${IC.brush}</button>
+        <button class="icon-btn" aria-label="More">${IC.more}</button>
+        <button class="icon-btn" id="pane-close" aria-label="Close">${IC.collapse}</button>
+      </span>
+    </div>
+
+    <div class="pane__body">
+      <div class="pane__title-wrap"><div class="pane__title">${r.locked ? lockIcon : ''}${esc(r.name)}</div></div>
+      <div class="pane__meta">${meta}</div>
+
+      ${section('Key metrics', IC.dashboard, `
+        <div class="pn-metrics">
+          <div class="pn-metric">
+            <div class="pn-metric__label">Occupancy</div>
+            <div class="pn-metric__value">${r.occ}</div>
+            <div class="pn-metric__sub">Current</div>
+          </div>
+          <div class="pn-metric">
+            <div class="pn-metric__label">Units</div>
+            <div class="pn-metric__value">${r.units}</div>
+            <div class="pn-metric__sub">Managed</div>
+          </div>
+          <div class="pn-metric">
+            <div class="pn-metric__label">Work orders</div>
+            <div class="pn-metric__value">${openWO}</div>
+            <div class="pn-metric__sub">${openWO === 1 ? 'Open' : 'Open'}</div>
+          </div>
+        </div>`)}
+
+      ${section('Branding asset', IC.page, brand
+        ? `<img class="branding-img" src="${brand}" alt="${esc(r.name)} branding">`
+        : `<div class="branding-empty">
+             <span class="branding-empty__chip"><span class="ico ico--16">${IC.plus}</span></span>
+             <span class="branding-empty__text">
+               <span class="branding-empty__title">No branding asset yet</span>
+               <span class="branding-empty__hint">Add an image to show it on this record</span>
+             </span>
+           </div>`)}
+
+      ${section('Property details', IC.dashboard, `<div class="cf">
+        ${cfRow('Address',           IC.page,   esc(r.addr))}
+        ${cfRow('Units',             IC.table,  r.units)}
+        ${cfRow('Year built',        IC.table,  r.year)}
+        ${cfRow('Status',            IC.goal,   pfPill(r.status, STATUS_COLOR[r.status] || 'none'))}
+        ${cfRow('Occupancy',         IC.goal,   r.occ)}
+        ${cfRow('Regional manager',  IC.people, `${face(r.mgr[0], r.mgr[1])}<span style="margin-left:6px">${esc(MGR_NAMES[r.mgr[0]] || r.mgr[0])}</span>`)}
+      </div>`)}
+    </div>
+
+    <div class="composer">
+      <div class="composer__input">Ask a question or leave a comment</div>
+      <div class="composer__tools">
+        <button class="icon-btn icon-btn--sm" aria-label="Attach">${IC.plus}</button>
+        <button class="icon-btn icon-btn--sm" aria-label="Mention">${IC.people}</button>
+        <button class="icon-btn icon-btn--sm composer__send" aria-label="Send">${IC.send}</button>
+      </div>
+    </div>`;
+}
+
+const MGR_NAMES = { JW:'James Wu', SC:'Sarah Chen', MR:'Marcus Reid', PP:'Priya Patel', HM:'Hana Mori', DK:'Dana Kim' };
+
+/* Open / close, scoped to whichever canvas is showing */
+function openPane(name, root) {
+  const r = PROPERTY_RECORDS.find(p => p.name === name);
+  if (!r) return;
+  closePane(root);
+  const el = document.createElement('aside');
+  el.className = 'pane';
+  el.innerHTML = paneHtml(r);
+  root.appendChild(el);
+  // next frame so the transition actually runs
+  requestAnimationFrame(() => el.classList.add('pane--on'));
+  const row = root.querySelector(`[data-prop="${CSS.escape(name)}"]`);
+  if (row) row.classList.add('is-open');
+}
+function closePane(root) {
+  root.querySelectorAll('.pane').forEach(n => n.remove());
+  root.querySelectorAll('tr.is-open').forEach(n => n.classList.remove('is-open'));
+}
+
+/* Same chrome as portfolioHtml — the page title is the TABLE, and the
+   grouping the user picked is simply the active tab. */
+function tableHtml(o) {
+  const def = TABLE_DEFS[o.table] || TABLE_DEFS.Properties;
+  const tab = o.tab || def.tabs[0];
+  const tabs = def.tabs.map(t =>
+    `<button class="db-tab ${t === tab ? 'db-tab--active' : ''}">${esc(t)}</button>`).join('') +
+    `<button class="db-tab" aria-label="Add view">${IC.plus}</button>`;
+
+  // rows() may return plain cell arrays, or { key, cells } when a row is
+  // clickable — the key is what opens the record pane.
+  const rows = def.rows(tab).map(r => {
+    const cells = Array.isArray(r) ? r : r.cells;
+    const attr  = Array.isArray(r) || !r.key ? '' : ` data-prop="${esc(r.key)}"`;
+    return `<tr${attr}>${cells.map(c => `<td>${c}</td>`).join('')}<td></td></tr>`;
+  }).join('');
+
+  return `
+    <div class="pf-head">
+      <div class="pf-head__crumb">Tables / ${esc(o.table)}</div>
+      <div class="pf-head__top">
+        <span class="pf-head__icon" style="background:${TYPES.table.bg};color:${TYPES.table.fg}">
+          <span class="ico ico--16" style="color:inherit">${IC.table}</span></span>
+        <span class="pf-head__name">${esc(o.table)}</span>
+        <button class="icon-btn icon-btn--sm" aria-label="Table menu">${IC.caret}</button>
+        <button class="icon-btn icon-btn--sm" aria-label="Star">${IC.star}</button>
+        <span class="pf-head__actions">
+          <span class="facepile">${PF_FACES.map(([i, h]) => face(i, h)).join('')}</span>
+          <button class="btn btn--secondary btn--sm">Share</button>
+          <span class="pf-head__sep"></span>
+          <button class="icon-btn" aria-label="Customize">${IC.brush}</button>
+        </span>
+      </div>
+      <div class="pf-head__tabs">${tabs}</div>
+    </div>
+    <div class="pf-toolbar">
+      <button class="btn btn--secondary btn--sm">${IC.plus}${esc(def.addLabel)}</button>
+      <span class="pf-toolbar__right">
+        ${['Filter','Sort','Group','Options'].map(x => `<span class="pf-toolbar__item">${x}</span>`).join('')}
+      </span>
+    </div>
+    <div class="pf-body">
+      <div class="pfg-wrap">
+        <table class="pfg">
+          <thead><tr>${def.cols.map(([c, w]) => `<th style="width:${w}px">${esc(c)}</th>`).join('')}<th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="pfg__add">${esc(def.addLabel)}…</div>
+      </div>
+    </div>`;
+}
+const STATUS_COLOR = {
+  'Takeover':'yellow', 'Stabilized':'green', 'New Development':'blue-green',
+  'Renovation':'indigo', 'Separation':'pink', 'On track':'green', 'At risk':'orange',
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PORTFOLIO VIEW — the same object as builder-mvp's "Transitions" page:
+   crumb, folder chip, facepile, underline tabs, toolbar, divider grid.
+   Rows differ per portfolio so four portfolios don't show one dataset.
+   ═══════════════════════════════════════════════════════════════════════ */
+const PF_TABS  = ['List', 'Timeline', 'Dashboard', 'Progress', 'Workload', 'Messages'];
+const PF_FACES = [['HM','pink'], ['JW','aqua'], ['DK','indigo'], ['SC','magenta']];
+
+/* One hue per location, shared across every portfolio — a select field's
+   colour belongs to the VALUE, so the same city can't be purple here and
+   blue there. */
+const LOC_HUE = {
+  'Oakland, CA':'purple', 'Sacramento, CA':'blue', 'San Jose, CA':'aqua',
+  'Portland, OR':'green', 'Seattle, WA':'indigo',  'Boston, MA':'hot-pink',
+  'Denver, CO':'orange',  'Austin, TX':'yellow-orange',
+  'Bay Area':'blue-green','National':'none',
+  // Added with the wider property set. Hues repeat once the list outgrows
+  // the 13-hue palette, which is what Asana does too.
+  'Chicago, IL':'magenta',       'Atlanta, GA':'pink',
+  'Phoenix, AZ':'yellow',        'Nashville, TN':'blue-green',
+  'Charlotte, NC':'purple',      'Dallas, TX':'orange',
+  'Minneapolis, MN':'indigo',    'San Diego, CA':'aqua',
+  'Raleigh, NC':'green',         'Tampa, FL':'hot-pink',
+  'Columbus, OH':'yellow-orange','Salt Lake City, UT':'blue',
+  'Kansas City, MO':'magenta',   'Richmond, VA':'purple',
+};
+
+const PF_VIEWS = {
+  'pf-ops': { crumb:'Portfolios / Real Estate', rows:[
+    { name:'Marlow Renovation',       open:42, loc:'Oakland, CA',    budget:'$420,000.00', launch:'8 weeks',  who:['JW','aqua'] },
+    { name:'Beacon Hill Unit Turns',  open:18, loc:'Sacramento, CA', budget:'$310,000.00', launch:'4 weeks',  who:['SC','magenta'] },
+    { name:'Sunset Commons Lease-Up', open:23, loc:'San Jose, CA',   budget:'$180,000.00', launch:'12 weeks', who:['JW','aqua'], status:['At risk','orange'] },
+    { name:'Vendor Onboarding',       open:11, loc:'Portland, OR',   budget:'$95,000.00',  launch:'ongoing',  who:['PP','yellow-orange'] },
+  ]},
+  'pf-mkt': { crumb:'Portfolios / Growth', rows:[
+    { name:'Fall Leasing Campaign',      open:16, loc:'Bay Area',       budget:'$240,000.00', launch:'6 weeks', who:['HM','pink'] },
+    { name:'Marlow Brand Launch',        open:12, loc:'Oakland, CA',    budget:'$155,000.00', launch:'5 weeks', who:['HM','pink'] },
+    { name:'Photography Refresh',        open:6, loc:'Sacramento, CA', budget:'$68,000.00',  launch:'3 weeks', who:['SC','magenta'] },
+    { name:'Listing Syndication Revamp', open:9, loc:'National',       budget:'$92,000.00',  launch:'9 weeks', who:['DK','indigo'], status:['At risk','orange'] },
+  ]},
+  'pf-legal': { crumb:'Portfolios / Corporate', rows:[
+    { name:'Lease Template Overhaul',    open:14, loc:'National',       budget:'$130,000.00', launch:'7 weeks',  who:['SC','magenta'] },
+    { name:'Fair Housing Audit',         open:8, loc:'Bay Area',       budget:'$85,000.00',  launch:'4 weeks',  who:['DK','indigo'] },
+    { name:'Beacon Hill Title Transfer', open:21, loc:'Sacramento, CA', budget:'$210,000.00', launch:'10 weeks', who:['SC','magenta'], status:['At risk','orange'] },
+    { name:'Vendor Contract Renewals',   open:5, loc:'National',       budget:'$54,000.00',  launch:'ongoing',  who:['PP','yellow-orange'] },
+  ]},
+  'pf-fac': { crumb:'Portfolios / Operations', rows:[
+    { name:'Elevator Modernization',        open:31, loc:'Boston, MA', budget:'$780,000.00', launch:'14 weeks', who:['MR','indigo'] },
+    { name:'Roof Replacement — Cedar Park', open:19, loc:'Denver, CO', budget:'$540,000.00', launch:'9 weeks',  who:['MR','indigo'], status:['At risk','orange'] },
+    { name:'HVAC Retrofit',                 open:14, loc:'Austin, TX', budget:'$410,000.00', launch:'7 weeks',  who:['PP','yellow-orange'] },
+    { name:'Water Intrusion Repairs',       open:12, loc:'Seattle, WA', budget:'$265,000.00', launch:'6 weeks', who:['MR','indigo'] },
+  ]},
+};
+
+const face   = (i, hue) => `<span class="avatar-24" style="background:${cz(hue,'bg')};color:${cz(hue,'fg')}">${esc(i)}</span>`;
+const pfPill = (text, hue) => `<span class="pf-pill" style="background:${cz(hue,'bg')};color:${cz(hue,'fg')}">${esc(text)}</span>`;
+
+function portfolioHtml(o) {
+  const v = PF_VIEWS[o.id] || PF_VIEWS['pf-ops'];
+  const tabs = PF_TABS.map((t, i) =>
+    `<button class="db-tab ${i === 0 ? 'db-tab--active' : ''}">${t}</button>`).join('') +
+    `<button class="db-tab" aria-label="Add view">${IC.plus}</button>`;
+
+  const rows = v.rows.map(r => {
+    const st = r.status || ['On track', 'green'];
+    return `<tr>
+      <td>${esc(r.name)}</td>
+      <td>${pfPill(r.loc, LOC_HUE[r.loc] || 'none')}</td>
+      <td>${r.budget}</td>
+      <td>${pfPill(st[0], st[1])}</td>
+      <td>${face(r.who[0], r.who[1])}</td>
+      <td>${esc(r.launch)}</td>
+      <td></td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="pf-head">
+      <div class="pf-head__crumb">${esc(v.crumb)}</div>
+      <div class="pf-head__top">
+        <span class="pf-head__icon" style="background:${cz(o.hue || 'yellow-orange','bg')};color:${cz(o.hue || 'yellow-orange','fg')}">${IC.folder}</span>
+        <span class="pf-head__name">${esc(o.name)}</span>
+        <button class="icon-btn icon-btn--sm" aria-label="Portfolio menu">${IC.caret}</button>
+        <button class="icon-btn icon-btn--sm" aria-label="Star">${IC.star}</button>
+        <span class="pf-head__actions">
+          <span class="facepile">${PF_FACES.map(([i, h]) => face(i, h)).join('')}</span>
+          <button class="btn btn--secondary btn--sm">Share</button>
+          <span class="pf-head__sep"></span>
+          <button class="icon-btn" aria-label="Customize">${IC.brush}</button>
+        </span>
+      </div>
+      <div class="pf-head__tabs">${tabs}</div>
+    </div>
+    <div class="pf-toolbar">
+      <button class="btn btn--secondary btn--sm">${IC.plus}Add work</button>
+      <span class="pf-toolbar__right">
+        ${['Filter','Sort','Group','Options'].map(x => `<span class="pf-toolbar__item">${x}</span>`).join('')}
+      </span>
+    </div>
+    <div class="pf-body">
+      <div class="pfg-wrap">
+        <table class="pfg">
+          <thead><tr>
+            <th style="width:300px">Task Name</th><th style="width:150px">Location</th>
+            <th style="width:130px">Budget</th><th style="width:110px">Status</th>
+            <th style="width:90px">Assignee</th><th style="width:110px">Launch date</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="pfg__add">Create new project</div>
+      </div>
+    </div>`;
+}
+
+function objectHtml(o, isPreview) {
+  // Portfolios and tables own their whole page chrome, not just a body
+  if (o.type === 'portfolio') return portfolioHtml(o);
+  if (o.type === 'table')     return tableHtml(o);
+  if (o.type === 'dashboard') return dashboardHtml(o);
+
+  const head = `
+    <div class="cv__head">
+      <div class="cv__title-row">
+        ${typeAvatar(o)}
+        <span class="cv__title">${esc(o.name)}</span>
+      </div>
+      <span class="cv__sub">${TYPES[o.type].label} · ${esc(o.meta)}</span>
+    </div>`;
+  return head + `<div class="cv__body">${bodyFor(o)}</div>`;
+}
+
+function bodyFor(o) {
+  switch (o.type) {
+    case 'project':
+      return `<div class="tasklist">
+        ${[['Final walkthrough — units 1–12','Aug 22','done'],
+           ['Punch list sign-off','Aug 25',''],
+           ['Vendor invoices reconciled','Aug 28',''],
+           ['Resident move-in packets','Sep 2',''],
+           ['Update occupancy forecast','Sep 5','']]
+          .map(([n,d,st]) => `<div class="task ${st === 'done' ? 'task--done' : ''}">
+            <span class="check"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 8.4l3 3 5.8-6"/></svg></span>
+            <span class="task__name">${esc(n)}</span><span class="task__meta">${d}</span></div>`).join('')}
+      </div>`;
+    case 'page':
+      return `<div class="doc">
+        <h4>Purpose</h4>
+        <p>How the operations team takes a property from acquisition through
+        stabilization, and who owns each stage.</p>
+        <h4>Stages</h4>
+        <ul><li>Due diligence &amp; handover</li><li>Staffing and vendor setup</li>
+        <li>Unit turns and capital work</li><li>Lease-up and stabilization</li></ul>
+        <h4>Escalation</h4>
+        <p>Anything that puts the stabilization date at risk goes to the regional
+        manager same-day, and onto the Leadership Digest that week.</p>
+      </div>`;
+    case 'team':
+      return `<div class="people-grid">
+        ${[['James Wu','Regional Manager','blue'],['Sarah Chen','Ops Lead','pink'],
+           ['Marcus Reid','Facilities','indigo'],['Priya Patel','Vendor Manager','orange'],
+           ['Dana Ruiz','Analyst','aqua'],['Sam Cole','Compliance','green']]
+          .map(([n,r,c]) => `<div class="person">
+            <span class="avatar" style="background:${cz(c,'bg')};color:${cz(c,'fg')}">${n.split(' ').map(x=>x[0]).join('')}</span>
+            <span><div class="person__name">${esc(n)}</div><div class="person__role">${esc(r)}</div></span>
+          </div>`).join('')}
+      </div>`;
+    case 'goal':
+      return `<div class="metrics" style="margin-bottom:16px">
+        <div class="metric"><span class="metric__label">Target</span><span class="metric__value">95%</span><span class="metric__delta">portfolio occupancy</span></div>
+        <div class="metric"><span class="metric__label">Current</span><span class="metric__value">91.4%</span><span class="metric__delta up">+1.2 this quarter</span></div>
+        <div class="metric"><span class="metric__label">Status</span><span class="metric__value" style="font-size:16px;line-height:32px">${o.meta.includes('risk') ? 'At risk' : 'On track'}</span><span class="metric__delta">updated 2d ago</span></div>
+      </div>
+      <div class="doc"><h4>Contributing work</h4>
+      <p>4 projects and 2 portfolios roll up into this goal.</p></div>`;
+    default:
+      return '<div class="empty"><span class="empty__title">Nothing to show</span></div>';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SCREEN 4 — END-USER APP
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderEndUser() {
+  $('#rail').innerHTML = railHtml({ appEntry: true, appActive: true });
+
+  const secs = CFG.sections.map(sec => `
+    <div class="sb__section">${esc(sec.name)}</div>
+    <div class="sb__group">
+      ${sec.items.map(id => {
+        const o = byId(id);
+        return `<div class="sb__row ${S.sel === id ? 'sb__row--active' : ''}" data-open="${id}">
+          ${typeAvatar(o, 'sm')}
+          <span class="sb__row-label">${esc(o.name)}</span>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+
+  $('#sidebar').innerHTML = `<div class="sb__section" style="height:36px;align-items:center">
+      ${avatarHtml(CFG.glyph, CFG.color, 'sm')}
+      <span style="margin-left:8px;color:var(--text);font-size:var(--type-m-size);font-weight:500">${esc(CFG.name)}</span>
+    </div>${secs}`;
+
+  const first = CFG.sections[0] && CFG.sections[0].items[0];
+  if (!S.sel) S.sel = first || null;
+
+  $('#canvas').innerHTML = S.sel ? objectHtml(byId(S.sel)) : `
+    <div class="empty"><span class="empty__art">${IC.build}</span>
+    <span class="empty__title">This app is empty</span></div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ROUTER
+   ═══════════════════════════════════════════════════════════════════════ */
+function go(screen) {
+  S.screen = screen;
+  // Panes are absolutely positioned inside a canvas, so one left open
+  // survives a screen change and reappears when you come back.
+  document.querySelectorAll('.canvas').forEach(closePane);
+  if (screen !== 'builder') $('#builder').classList.remove('builder--on');
+  if (screen === 'workspace') { S.railMode = 'work'; renderWorkspace(); }
+  if (screen === 'apps')      renderApps();
+  if (screen === 'builder')   { $('#builder').classList.add('builder--on'); paintBuilder(); }
+  if (screen === 'app')       renderEndUser();
+  renderSteps();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EVENTS — delegated, so every re-render keeps working
+   ═══════════════════════════════════════════════════════════════════════ */
+document.addEventListener('click', (e) => {
+  const t = e.target;
+
+  // prototype step trail
+  const step = t.closest('[data-step]');
+  if (step && !step.disabled) { go(step.dataset.step); return; }
+
+  // rail
+  const rail = t.closest('[data-rail]');
+  if (rail) {
+    const k = rail.dataset.rail;
+    if (k === 'build') { go('apps'); return; }
+    if (k === 'app')   { if (S.published) { S.sel = null; go('app'); } return; }
+    S.railMode = k;
+    if (S.screen !== 'workspace') go('workspace'); else renderWorkspace();
+    return;
+  }
+
+  // apps index
+  if (t.closest('#new-app') || t.closest('#new-app-card')) { openModal(); return; }
+  // The apps index lives under Build, so it's a management surface: clicking
+  // your app opens the EDITOR. The rail icon is how you enter it as a user.
+  if (t.closest('[data-edit-app]')) { S.bldTab = 'build'; S.sel = null; go('builder'); return; }
+  const sample = t.closest('[data-sample]');
+  if (sample) { toast(`${sample.dataset.sample} is sample data — create your own app to edit one`); return; }
+
+  // modal
+  if (t.closest('[data-glyph]')) { CFG.glyph = t.closest('[data-glyph]').dataset.glyph; paintModal(); return; }
+  if (t.closest('[data-color]')) { CFG.color = t.closest('[data-color]').dataset.color; paintModal(); return; }
+  if (t.closest('#modal-cancel')) { $('#scrim').classList.remove('scrim--on'); return; }
+  if (t.closest('#modal-create')) {
+    CFG.name = $('#app-name').value.trim() || 'Untitled app';
+    $('#scrim').classList.remove('scrim--on');
+    openBuilder();
+    return;
+  }
+
+  // builder tabs
+  const bt = t.closest('[data-bt]');
+  if (bt) { S.bldTab = bt.dataset.bt; paintBuilder(); return; }
+
+  // sections
+  if (t.closest('#add-section')) {
+    CFG.sections.push({ name: `Section ${CFG.sections.length + 1}`, items: [] });
+    paintBuilder();
+    // focus the new section's name so it can be renamed immediately
+    const inputs = $$('[data-secname]');
+    const last = inputs[inputs.length - 1];
+    if (last) { last.focus(); last.select(); }
+    return;
+  }
+  const delsec = t.closest('[data-delsec]');
+  if (delsec) {
+    const si = +delsec.dataset.delsec;
+    const removed = CFG.sections.splice(si, 1)[0];
+    if (removed && removed.items.includes(S.sel)) S.sel = null;
+    paintBuilder();
+    return;
+  }
+  const addobj = t.closest('[data-addobj]');
+  if (addobj) { openTA(+addobj.dataset.addobj, addobj); return; }
+  const delobj = t.closest('[data-delobj]');
+  if (delobj) {
+    const [si, ii] = delobj.dataset.delobj.split(':').map(Number);
+    const gone = CFG.sections[si].items.splice(ii, 1)[0];
+    if (S.sel === gone) S.sel = null;
+    paintBuilder();
+    return;
+  }
+  // record pane — open on a property row, close on the X or a re-click
+  if (t.closest('#pane-close')) { closePane(t.closest('.canvas')); return; }
+  const propRow = t.closest('[data-prop]');
+  if (propRow) {
+    const root = propRow.closest('.canvas');
+    if (propRow.classList.contains('is-open')) closePane(root);
+    else openPane(propRow.dataset.prop, root);
+    return;
+  }
+
+  // select an object (preview + end user)
+  const item = t.closest('[data-obj]');
+  if (item) { S.sel = item.dataset.obj; renderPreview(); return; }
+  const open = t.closest('[data-open]');
+  if (open) { S.sel = open.dataset.open; renderEndUser(); return; }
+
+  // typeahead pick
+  const p = t.closest('[data-pick]');
+  if (p) { if (!p.classList.contains('ta__opt--dis')) pick(p.dataset.pick); return; }
+
+  // settings
+  const gen = t.closest('[data-gen]');
+  if (gen) { CFG.access.general = gen.dataset.gen; renderSettings(); return; }
+  if (t.closest('#unpublish')) {
+    S.published = false;
+    S.sel = null;
+    paintBuilder();   // re-renders the badge, publish label and settings card
+    renderSteps();    // "End user" is no longer reachable
+    toast(`${CFG.name} unpublished — it's a draft again`);
+    return;
+  }
+
+  // builder actions
+  if (t.closest('#bld-cancel')) {
+    $('#builder').classList.remove('builder--on');
+    go(S.published ? 'apps' : 'apps');
+    return;
+  }
+  if (t.closest('#bld-publish')) {
+    S.published = true;
+    $('#builder').classList.remove('builder--on');
+    S.sel = null;
+    go('app');
+    toast(`${CFG.name} published`);
+    return;
+  }
+
+  if (t.closest('#reset')) { hardReset(); return; }
+
+  // click-away closes the typeahead
+  if (!t.closest('#ta')) closeTA();
+});
+
+/* section rename */
+document.addEventListener('input', (e) => {
+  const sn = e.target.closest('[data-secname]');
+  if (sn) { CFG.sections[+sn.dataset.secname].name = sn.value; return; }
+  if (e.target.id === 'app-name') { $('#modal-create').disabled = !e.target.value.trim(); return; }
+  if (e.target.id === 'ta-input') { taCursor = 0; paintTA(); return; }
+});
+document.addEventListener('change', (e) => {
+  const perm = e.target.closest('[data-perm]');
+  if (perm) {
+    const i = +perm.dataset.perm;
+    if (perm.value === 'Remove') {
+      const gone = CFG.access.people.splice(i, 1)[0];
+      renderSettings();
+      toast(`Removed ${gone.name} as an editor`);
+    } else {
+      CFG.access.people[i].perm = perm.value;
+    }
+    return;
+  }
+});
+
+/* keyboard */
+document.addEventListener('keydown', (e) => {
+  // modal
+  if ($('#scrim').classList.contains('scrim--on')) {
+    if (e.key === 'Escape') $('#scrim').classList.remove('scrim--on');
+    if (e.key === 'Enter' && $('#app-name').value.trim()) $('#modal-create').click();
+    return;
+  }
+  // typeahead
+  if ($('#ta').classList.contains('ta--on')) {
+    if (e.key === 'Escape') { e.preventDefault(); closeTA(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); taCursor = Math.min(taCursor + 1, taResults.length - 1); paintTA(); scrollCursor(); return; }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); taCursor = Math.max(taCursor - 1, 0); paintTA(); scrollCursor(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const o = taResults[taCursor];
+      if (o && !usedIds().includes(o.id)) pick(o.id);
+      return;
+    }
+  }
+  // blur a section name on Enter
+  if (e.key === 'Enter' && e.target.closest('[data-secname]')) { e.target.blur(); }
+});
+function scrollCursor() {
+  const el = $('.ta__opt--cursor');
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+
+/* ── drag to reorder ──────────────────────────────────────────────────
+   Two independent drags share these handlers: an OBJECT within/between
+   sections, and a whole SECTION. Exactly one of dragFrom / dragSec is set,
+   and each handler branches on that — otherwise dragging a section over an
+   object would be read as an object drop.
+
+   Sections are dragged from a grip rather than the header itself: the
+   header holds a text input, and making it draggable would fight with
+   clicking in to rename. */
+let dragFrom = null;   // { si, ii } — an object
+let dragSec  = null;   // section index
+
+const clearDropCues = () => {
+  $$('.sec__item--drag, .sec__item--over').forEach(n => n.classList.remove('sec__item--drag', 'sec__item--over'));
+  $$('.sec--drag, .sec--over').forEach(n => n.classList.remove('sec--drag', 'sec--over'));
+};
+
+document.addEventListener('dragstart', (e) => {
+  const grip = e.target.closest('[data-sec-drag]');
+  if (grip) {
+    dragSec = +grip.dataset.secDrag; dragFrom = null;
+    grip.closest('.sec').classList.add('sec--drag');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'section:' + dragSec);
+    return;
+  }
+  const it = e.target.closest('.sec__item');
+  if (!it) return;
+  dragFrom = { si: +it.dataset.si, ii: +it.dataset.ii }; dragSec = null;
+  it.classList.add('sec__item--drag');
+  e.dataTransfer.effectAllowed = 'move';
+  // Firefox needs data set for the drag to start
+  e.dataTransfer.setData('text/plain', it.dataset.obj);
+});
+
+document.addEventListener('dragend', () => { clearDropCues(); dragFrom = null; dragSec = null; });
+
+document.addEventListener('dragover', (e) => {
+  if (dragSec !== null) {
+    const sec = e.target.closest('.sec');
+    if (!sec) return;
+    e.preventDefault();
+    $$('.sec--over').forEach(n => n.classList.remove('sec--over'));
+    if (+sec.dataset.si !== dragSec) sec.classList.add('sec--over');
+    return;
+  }
+  const it = e.target.closest('.sec__item');
+  const items = e.target.closest('[data-items]');
+  if (!it && !items) return;
+  e.preventDefault();
+  $$('.sec__item--over').forEach(n => n.classList.remove('sec__item--over'));
+  if (it) it.classList.add('sec__item--over');
+});
+
+document.addEventListener('drop', (e) => {
+  // ── whole section ──
+  if (dragSec !== null) {
+    const sec = e.target.closest('.sec');
+    if (!sec) return;
+    e.preventDefault();
+    const to = +sec.dataset.si;
+    if (to !== dragSec) {
+      const moved = CFG.sections.splice(dragSec, 1)[0];
+      // The cue is a line on the target's TOP edge, so land before it.
+      // Removing an earlier section shifts the target down by one.
+      CFG.sections.splice(dragSec < to ? to - 1 : to, 0, moved);
+      dragSec = null;
+      paintBuilder();
+    }
+    dragSec = null;
+    return;
+  }
+
+  // ── single object ──
+  if (!dragFrom) return;
+  const it = e.target.closest('.sec__item');
+  const zone = e.target.closest('[data-items]');
+  if (!it && !zone) return;
+  e.preventDefault();
+
+  const toSi = it ? +it.dataset.si : +zone.dataset.items;
+  const toIi = it ? +it.dataset.ii : CFG.sections[toSi].items.length;
+  const moved = CFG.sections[dragFrom.si].items.splice(dragFrom.ii, 1)[0];
+  // account for the removal shifting indices within the same section
+  const adj = (dragFrom.si === toSi && dragFrom.ii < toIi) ? toIi - 1 : toIi;
+  CFG.sections[toSi].items.splice(adj, 0, moved);
+  dragFrom = null;
+  paintBuilder();
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESET
+   ═══════════════════════════════════════════════════════════════════════ */
+function hardReset() {
+  S = { screen:'workspace', railMode:'work', published:false, sel:null, bldTab:'build' };
+  CFG = freshCfg();
+  closeTA();
+  $('#scrim').classList.remove('scrim--on');
+  $('#builder').classList.remove('builder--on');
+  go('workspace');
+}
+
+/* boot */
+CFG = freshCfg();
+go('workspace');
+</script>
+</body>
+</html>
